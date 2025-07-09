@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双容串联水箱液位系统模拟</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .main-container {
+            display: flex;
+            justify-content: space-between;
+        }
+        .tanks-container {
+            width: 48%;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            width: 48%;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .tank-row {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 30px;
+        }
+        .tank-wrapper {
+            text-align: center;
+        }
+        .tank-label {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .tank {
+            position: relative;
+            width: 200px;
+            height: 300px;
+            border: 3px solid #333;
+            border-radius: 5px;
+            overflow: hidden;
+            background-color: #f9f9f9;
+            margin: 0 auto;
+        }
+        .water {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 30%;
+            background-color: #4a90e2;
+            transition: height 0.5s ease;
+        }
+        .water-wave {
+            position: absolute;
+            top: -10px;
+            width: 100%;
+            height: 20px;
+            background: radial-gradient(ellipse at center, rgba(74,144,226,0.8) 0%, rgba(74,144,226,0) 70%);
+            border-radius: 50%;
+            animation: wave 2s infinite linear;
+        }
+        @keyframes wave {
+            0% { transform: translateX(0) scale(1,1); }
+            50% { transform: translateX(-20px) scale(0.9,1.1); }
+            100% { transform: translateX(0) scale(1,1); }
+        }
+        .water-level {
+            position: absolute;
+            right: 10px;
+            color: #333;
+            font-weight: bold;
+            background-color: rgba(255,255,255,0.7);
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .pipe {
+            position: absolute;
+            background-color: #aaa;
+            z-index: 1;
+        }
+        .inlet-pipe {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 40px;
+        }
+        .outlet-pipe {
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 40px;
+        }
+        .connecting-pipe {
+            width: 100px;
+            height: 20px;
+            background-color: #aaa;
+            margin: 10px auto;
+            position: relative;
+        }
+        .valve-icon {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .inlet-valve {
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #2ecc71;
+        }
+        .outlet-valve {
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #e74c3c;
+        }
+        .valve-controls {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .valve-control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 45%;
+        }
+        .valve-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .valve-slider {
+            width: 100%;
+            margin: 5px 0;
+        }
+        .valve-info {
+            margin-top: 5px;
+            padding: 8px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+        }
+        .data-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .data-label {
+            font-weight: bold;
+        }
+        .data-value {
+            font-family: monospace;
+        }
+        .chart-area {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+        }
+        .reset-btn {
+            display: block;
+            margin: 20px auto 0;
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .reset-btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>双容串联水箱液位系统模拟</h1>
+    
+    <div class="main-container">
+        <div class="tanks-container">
+            <div class="tank-row">
+                <div class="tank-wrapper">
+                    <div class="tank-label">水箱1</div>
+                    <div class="tank">
+                        <div class="pipe inlet-pipe"></div>
+                        <div class="valve-icon inlet-valve" title="进水阀">IN</div>
+                        <div class="water" id="waterTank1">
+                            <div class="water-wave"></div>
+                        </div>
+                        <div class="water-level" id="waterLevel1">30%</div>
+                    </div>
+                </div>
+                
+                <div class="tank-wrapper">
+                    <div class="tank-label">水箱2</div>
+                    <div class="tank">
+                        <div class="pipe outlet-pipe"></div>
+                        <div class="valve-icon outlet-valve" title="出水阀">OUT</div>
+                        <div class="water" id="waterTank2">
+                            <div class="water-wave"></div>
+                        </div>
+                        <div class="water-level" id="waterLevel2">30%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="connecting-pipe"></div>
+            
+            <div class="valve-controls">
+                <div class="valve-control">
+                    <div class="valve-label">进水阀</div>
+                    <input type="range" min="0" max="100" value="40" class="valve-slider" id="inletValve">
+                    <div class="valve-info">
+                        <div>开度: <span id="inletOpening">40</span>%</div>
+                        <div>流量: <span id="inletFlow">20.0</span> L/min</div>
+                    </div>
+                </div>
+                
+                <div class="valve-control">
+                    <div class="valve-label">出水阀</div>
+                    <input type="range" min="0" max="100" value="30" class="valve-slider" id="outletValve">
+                    <div class="valve-info">
+                        <div>开度: <span id="outletOpening">30</span>%</div>
+                        <div>流量: <span id="outletFlow">9.0</span> L/min</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="data-panel">
+                <div class="data-row">
+                    <span class="data-label">水箱1液位:</span>
+                    <span class="data-value" id="tank1Level">30.0%</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">水箱2液位:</span>
+                    <span class="data-value" id="tank2Level">30.0%</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">进水流量:</span>
+                    <span class="data-value" id="displayInletFlow">20.0 L/min</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">出水流量:</span>
+                    <span class="data-value" id="displayOutletFlow">9.0 L/min</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">系统状态:</span>
+                    <span class="data-value" id="systemStatus">运行中</span>
+                </div>
+            </div>
+            
+            <button class="reset-btn" id="resetBtn">重置系统</button>
+        </div>
+        
+        <div class="chart-container">
+            <h3>液位响应曲线</h3>
+            <div class="chart-area">
+                <canvas id="levelChart"></canvas>
+            </div>
+            <div class="data-panel" style="margin-top: 20px;">
+                <div class="data-row">
+                    <span class="data-label">水箱1最高液位:</span>
+                    <span class="data-value" id="tank1Max">30.0%</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">水箱2最高液位:</span>
+                    <span class="data-value" id="tank2Max">30.0%</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">运行时间:</span>
+                    <span class="data-value" id="runTime">0秒</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // 获取DOM元素
+        const waterTank1 = document.getElementById('waterTank1');
+        const waterTank2 = document.getElementById('waterTank2');
+        const waterLevel1 = document.getElementById('waterLevel1');
+        const waterLevel2 = document.getElementById('waterLevel2');
+        const tank1Level = document.getElementById('tank1Level');
+        const tank2Level = document.getElementById('tank2Level');
+        const inletValve = document.getElementById('inletValve');
+        const outletValve = document.getElementById('outletValve');
+        const inletOpening = document.getElementById('inletOpening');
+        const outletOpening = document.getElementById('outletOpening');
+        const inletFlow = document.getElementById('inletFlow');
+        const outletFlow = document.getElementById('outletFlow');
+        const displayInletFlow = document.getElementById('displayInletFlow');
+        const displayOutletFlow = document.getElementById('displayOutletFlow');
+        const systemStatus = document.getElementById('systemStatus');
+        const tank1Max = document.getElementById('tank1Max');
+        const tank2Max = document.getElementById('tank2Max');
+        const runTime = document.getElementById('runTime');
+        const resetBtn = document.getElementById('resetBtn');
+        
+        // 图表相关
+        const chartCanvas = document.getElementById('levelChart');
+        const chartCtx = chartCanvas.getContext('2d');
+        const maxDataPoints = 200;
+        let timeData = [];
+        let tank1Data = [];
+        let tank2Data = [];
+        let startTime = Date.now();
+        let chart = null;
+        
+        // 系统参数
+        let tank1LevelValue = 30; // 水箱1液位百分比
+        let tank2LevelValue = 30; // 水箱2液位百分比
+        let inletValvePos = 40; // 进水阀开度
+        let outletValvePos = 30; // 出水阀开度
+        let tank1MaxValue = 30;
+        let tank2MaxValue = 30;
+        let lastUpdateTime = Date.now();
+        
+        // 水箱参数
+        const tank1Area = 1.0; // 水箱1截面积 (m²)
+        const tank2Area = 1.0; // 水箱2截面积 (m²)
+        const connectingResistance = 0.1; // 连接管道阻力系数
+        
+        // 初始化图表
+        function initChart() {
+            chartCanvas.width = chartCanvas.offsetWidth;
+            chartCanvas.height = chartCanvas.offsetHeight;
+            
+            timeData = [];
+            tank1Data = [];
+            tank2Data = [];
+            startTime = Date.now();
+            tank1MaxValue = tank1LevelValue;
+            tank2MaxValue = tank2LevelValue;
+            
+            for (let i = 0; i < maxDataPoints; i++) {
+                timeData.push(i - maxDataPoints + 1);
+                tank1Data.push(tank1LevelValue);
+                tank2Data.push(tank2LevelValue);
+            }
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: timeData,
+                    datasets: [
+                        {
+                            label: '水箱1液位',
+                            data: tank1Data,
+                            borderColor: '#4a90e2',
+                            backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: '水箱2液位',
+                            data: tank2Data,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '时间 (秒)'
+                            },
+                            min: -maxDataPoints/10,
+                            max: 0
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '液位 (%)'
+                            },
+                            min: 0,
+                            max: 100
+                        }
+                    },
+                    animation: {
+                        duration: 0
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新图表数据
+        function updateChart() {
+            // 计算经过的时间(秒)
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            
+            // 更新极值
+            tank1MaxValue = Math.max(tank1MaxValue, tank1LevelValue);
+            tank2MaxValue = Math.max(tank2MaxValue, tank2LevelValue);
+            tank1Max.textContent = tank1MaxValue.toFixed(1) + '%';
+            tank2Max.textContent = tank2MaxValue.toFixed(1) + '%';
+            runTime.textContent = elapsedTime.toFixed(0) + '秒';
+            
+            // 添加新数据点
+            timeData.push(elapsedTime);
+            tank1Data.push(tank1LevelValue);
+            tank2Data.push(tank2LevelValue);
+            
+            // 如果数据点超过最大值，移除旧数据
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                tank1Data.shift();
+                tank2Data.shift();
+            }
+            
+            // 更新图表
+            chart.data.labels = timeData.map(t => t - elapsedTime);
+            chart.data.datasets[0].data = tank1Data;
+            chart.data.datasets[1].data = tank2Data;
+            chart.update();
+        }
+        
+        // 计算流量
+        function calculateFlow() {
+            // 进水流量 (L/min)
+            const inletFlowRate = inletValvePos * 0.5;
+            
+            // 水箱1到水箱2的流量 (与液位差成正比)
+            const levelDifference = tank1LevelValue - tank2LevelValue;
+            const connectingFlowRate = Math.max(0, levelDifference * 0.4);
+            
+            // 出水流量 (L/min)
+            const outletFlowRate = outletValvePos * 0.3 * (tank2LevelValue / 100);
+            
+            return {
+                inlet: inletFlowRate,
+                connecting: connectingFlowRate,
+                outlet: outletFlowRate
+            };
+        }
+        
+        // 更新水箱液位
+        function updateTanks() {
+            const now = Date.now();
+            const deltaTime = (now - lastUpdateTime) / 1000; // 转换为秒
+            lastUpdateTime = now;
+            
+            // 计算各段流量
+            const flows = calculateFlow();
+            
+            // 更新水箱1液位 (进水流量 - 连接管道流量)
+            tank1LevelValue = Math.max(0, Math.min(100, 
+                tank1LevelValue + (flows.inlet - flows.connecting) * deltaTime));
+            
+            // 更新水箱2液位 (连接管道流量 - 出水流量)
+            tank2LevelValue = Math.max(0, Math.min(100, 
+                tank2LevelValue + (flows.connecting - flows.outlet) * deltaTime));
+            
+            // 更新显示
+            waterTank1.style.height = `${tank1LevelValue}%`;
+            waterTank2.style.height = `${tank2LevelValue}%`;
+            waterLevel1.textContent = `${Math.round(tank1LevelValue)}%`;
+            waterLevel2.textContent = `${Math.round(tank2LevelValue)}%`;
+            waterLevel1.style.top = `${300 - tank1LevelValue * 3 - 20}px`;
+            waterLevel2.style.top = `${300 - tank2LevelValue * 3 - 20}px`;
+            tank1Level.textContent = tank1LevelValue.toFixed(1) + '%';
+            tank2Level.textContent = tank2LevelValue.toFixed(1) + '%';
+            
+            // 更新流量显示
+            inletFlow.textContent = flows.inlet.toFixed(1);
+            outletFlow.textContent = flows.outlet.toFixed(1);
+            displayInletFlow.textContent = flows.inlet.toFixed(1) + ' L/min';
+            displayOutletFlow.textContent = flows.outlet.toFixed(1) + ' L/min';
+            
+            // 更新系统状态
+            const status1 = tank1LevelValue > 95 ? '水箱1接近满' : tank1LevelValue < 5 ? '水箱1接近空' : '';
+            const status2 = tank2LevelValue > 95 ? '水箱2接近满' : tank2LevelValue < 5 ? '水箱2接近空' : '';
+            systemStatus.textContent = status1 || status2 || '运行正常';
+            systemStatus.style.color = (status1 || status2) ? '#e74c3c' : '#2ecc71';
+            
+            // 更新图表
+            updateChart();
+            
+            // 继续动画
+            requestAnimationFrame(updateTanks);
+        }
+        
+        // 阀门变化事件处理
+        inletValve.addEventListener('input', function() {
+            inletValvePos = parseInt(this.value);
+            inletOpening.textContent = inletValvePos;
+        });
+        
+        outletValve.addEventListener('input', function() {
+            outletValvePos = parseInt(this.value);
+            outletOpening.textContent = outletValvePos;
+        });
+        
+        // 重置系统
+        resetBtn.addEventListener('click', function() {
+            tank1LevelValue = 30;
+            tank2LevelValue = 30;
+            inletValve.value = 40;
+            outletValve.value = 30;
+            inletValvePos = 40;
+            outletValvePos = 30;
+            inletOpening.textContent = '40';
+            outletOpening.textContent = '30';
+            initChart();
+        });
+        
+        // 初始化并启动模拟
+        initChart();
+        updateTanks();
+    </script>
+</body>
+</html>
