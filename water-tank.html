@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水箱液位系统模拟</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .main-container {
+            display: flex;
+            justify-content: space-between;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 48%;
+        }
+        .tank-container {
+            position: relative;
+            width: 300px;
+            height: 400px;
+            margin: 20px 0;
+            border: 3px solid #333;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .tank {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 0;
+            background-color: #4a90e2;
+            transition: height 0.5s ease;
+        }
+        .water-level {
+            position: absolute;
+            right: 10px;
+            color: #333;
+            font-weight: bold;
+        }
+        .valve-controls {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .valve {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 45%;
+        }
+        .valve-label {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .valve-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+        .valve-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            width: 100%;
+            text-align: center;
+        }
+        .pipe {
+            position: absolute;
+            background-color: #aaa;
+        }
+        .inlet-pipe {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 50px;
+        }
+        .outlet-pipe {
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 50px;
+        }
+        .valve-icon {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: #ff6b6b;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .inlet-valve {
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .outlet-valve {
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            position: relative;
+            margin-top: 20px;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #ddd;
+            background-color: white;
+        }
+        .chart-label {
+            text-align: center;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .time-label {
+            position: absolute;
+            bottom: -20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>水箱液位系统模拟</h1>
+    
+    <div class="main-container">
+        <div class="container">
+            <div class="tank-container">
+                <div class="pipe inlet-pipe"></div>
+                <div class="pipe outlet-pipe"></div>
+                <div class="valve-icon inlet-valve" title="进水阀"></div>
+                <div class="valve-icon outlet-valve" title="出水阀"></div>
+                <div class="tank" id="waterTank"></div>
+                <div class="water-level" id="waterLevel">0%</div>
+            </div>
+            
+            <div class="valve-controls">
+                <div class="valve">
+                    <div class="valve-label">进水阀</div>
+                    <input type="range" min="0" max="100" value="0" class="valve-slider" id="inletValve">
+                    <div class="valve-info">
+                        <div>开度: <span id="inletOpening">0</span>%</div>
+                        <div>流量: <span id="inletFlow">0</span> L/min</div>
+                    </div>
+                </div>
+                
+                <div class="valve">
+                    <div class="valve-label">出水阀</div>
+                    <input type="range" min="0" max="100" value="0" class="valve-slider" id="outletValve">
+                    <div class="valve-info">
+                        <div>开度: <span id="outletOpening">0</span>%</div>
+                        <div>流量: <span id="outletFlow">0</span> L/min</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="container">
+            <div class="chart-label">液位响应曲线</div>
+            <div class="chart-container">
+                <canvas id="levelChart"></canvas>
+                <div class="time-label">时间 (秒)</div>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <button id="resetChart">重置曲线</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const waterTank = document.getElementById('waterTank');
+        const waterLevel = document.getElementById('waterLevel');
+        const inletValve = document.getElementById('inletValve');
+        const outletValve = document.getElementById('outletValve');
+        const inletOpening = document.getElementById('inletOpening');
+        const outletOpening = document.getElementById('outletOpening');
+        const inletFlow = document.getElementById('inletFlow');
+        const outletFlow = document.getElementById('outletFlow');
+        const resetChartBtn = document.getElementById('resetChart');
+        
+        // 系统参数
+        let currentLevel = 0; // 当前液位百分比
+        let inletValvePos = 0; // 进水阀开度
+        let outletValvePos = 0; // 出水阀开度
+        let lastUpdateTime = Date.now();
+        
+        // 图表相关变量
+        const chartCanvas = document.getElementById('levelChart');
+        const chartCtx = chartCanvas.getContext('2d');
+        const maxDataPoints = 200; // 最大数据点数
+        let timeData = [];
+        let levelData = [];
+        let startTime = Date.now();
+        
+        // 初始化图表
+        function initChart() {
+            chartCanvas.width = chartCanvas.offsetWidth;
+            chartCanvas.height = chartCanvas.offsetHeight;
+            
+            timeData = [];
+            levelData = [];
+            startTime = Date.now();
+            
+            for (let i = 0; i < maxDataPoints; i++) {
+                timeData.push(i - maxDataPoints + 1);
+                levelData.push(0);
+            }
+            
+            drawChart();
+        }
+        
+        // 绘制图表
+        function drawChart() {
+            // 清除画布
+            chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+            
+            // 绘制网格
+            chartCtx.strokeStyle = '#eee';
+            chartCtx.lineWidth = 1;
+            
+            // 水平网格线
+            for (let y = 0; y <= 100; y += 10) {
+                const canvasY = chartCanvas.height - (y / 100) * chartCanvas.height;
+                chartCtx.beginPath();
+                chartCtx.moveTo(0, canvasY);
+                chartCtx.lineTo(chartCanvas.width, canvasY);
+                chartCtx.stroke();
+                
+                // 添加标签
+                chartCtx.fillStyle = '#666';
+                chartCtx.font = '10px Arial';
+                chartCtx.fillText(y + '%', 5, canvasY - 5);
+            }
+            
+            // 垂直网格线 (每10秒)
+            const secondsVisible = maxDataPoints / 10;
+            for (let x = 0; x <= secondsVisible; x += 10) {
+                const canvasX = (x / secondsVisible) * chartCanvas.width;
+                chartCtx.beginPath();
+                chartCtx.moveTo(canvasX, 0);
+                chartCtx.lineTo(canvasX, chartCanvas.height);
+                chartCtx.stroke();
+                
+                // 添加标签
+                chartCtx.fillStyle = '#666';
+                chartCtx.font = '10px Arial';
+                chartCtx.fillText(x + 's', canvasX - 10, chartCanvas.height - 5);
+            }
+            
+            // 绘制曲线
+            chartCtx.strokeStyle = '#4a90e2';
+            chartCtx.lineWidth = 2;
+            chartCtx.beginPath();
+            
+            for (let i = 0; i < levelData.length; i++) {
+                const x = (i / (maxDataPoints - 1)) * chartCanvas.width;
+                const y = chartCanvas.height - (levelData[i] / 100) * chartCanvas.height;
+                
+                if (i === 0) {
+                    chartCtx.moveTo(x, y);
+                } else {
+                    chartCtx.lineTo(x, y);
+                }
+            }
+            
+            chartCtx.stroke();
+            
+            // 绘制当前点
+            if (levelData.length > 0) {
+                const lastX = chartCanvas.width;
+                const lastY = chartCanvas.height - (levelData[levelData.length - 1] / 100) * chartCanvas.height;
+                
+                chartCtx.fillStyle = '#4a90e2';
+                chartCtx.beginPath();
+                chartCtx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+                chartCtx.fill();
+                
+                // 显示当前值
+                chartCtx.fillStyle = '#333';
+                chartCtx.font = '12px Arial';
+                chartCtx.fillText(`${levelData[levelData.length - 1].toFixed(1)}%`, lastX - 40, lastY - 10);
+            }
+        }
+        
+        // 更新图表数据
+        function updateChart(level) {
+            // 计算经过的时间(秒)
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            
+            // 添加新数据点
+            timeData.push(elapsedTime);
+            levelData.push(level);
+            
+            // 如果数据点超过最大值，移除旧数据
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                levelData.shift();
+            }
+            
+            // 重绘图表
+            drawChart();
+        }
+        
+        // 更新水箱液位
+        function updateTank() {
+            const now = Date.now();
+            const deltaTime = (now - lastUpdateTime) / 1000; // 转换为秒
+            lastUpdateTime = now;
+            
+            // 计算净流量 (进水流量 - 出水流量)
+            const netFlow = inletValvePos * 0.5 - outletValvePos * 0.3;
+            
+            // 更新液位 (限制在0-100%之间)
+            currentLevel = Math.max(0, Math.min(100, currentLevel + netFlow * deltaTime));
+            
+            // 更新显示
+            waterTank.style.height = `${currentLevel}%`;
+            waterLevel.textContent = `${Math.round(currentLevel)}%`;
+            waterLevel.style.top = `${400 - currentLevel * 4 - 20}px`;
+            
+            // 更新流量显示
+            inletFlow.textContent = (inletValvePos * 0.5).toFixed(1);
+            outletFlow.textContent = (outletValvePos * 0.3).toFixed(1);
+            
+            // 更新图表
+            updateChart(currentLevel);
+            
+            // 继续动画
+            requestAnimationFrame(updateTank);
+        }
+        
+        // 阀门变化事件处理
+        inletValve.addEventListener('input', function() {
+            inletValvePos = parseInt(this.value);
+            inletOpening.textContent = inletValvePos;
+        });
+        
+        outletValve.addEventListener('input', function() {
+            outletValvePos = parseInt(this.value);
+            outletOpening.textContent = outletValvePos;
+        });
+        
+        // 重置图表按钮
+        resetChartBtn.addEventListener('click', initChart);
+        
+        // 初始化并启动模拟
+        initChart();
+        updateTank();
+    </script>
+</body>
+</html>
