@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>自平衡案例探索（手机版）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body {
+    background: #f0f2f5;
+    color: #1a1a1a;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 强制横向滚动条在手机端可见 */
+  body::-webkit-scrollbar { height: 14px; -webkit-appearance: none; }
+  body::-webkit-scrollbar-track { background: #e0e0e0; border-radius: 7px; }
+  body::-webkit-scrollbar-thumb { background: #9aa5b1; border-radius: 7px; }
+  body::-webkit-scrollbar-thumb:hover { background: #7b8794; }
+  body { scrollbar-width: thin; scrollbar-color: #9aa5b1 #e0e0e0; }
+
+  .page-wrap {
+    min-width: 740px;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 10px;
+  }
+
+  header {
+    background: linear-gradient(135deg, #4a90d9, #357abd);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: 0.92; margin-top: 3px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 10px;
+  }
+
+  .panel {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .panel-title {
+    background: #f7f9fc;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 1px solid #eef0f4;
+  }
+  .panel-body { padding: 8px; }
+
+  /* 储罐区域 */
+  .tank-panel .panel-body { text-align: center; }
+  canvas.tank { width: 100%; height: 240px; display: block; }
+
+  .controls { padding: 6px 4px 2px; }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .ctrl-row label { width: 64px; color: #555; flex-shrink: 0; }
+  .ctrl-row input[type=range] {
+    flex: 1;
+    margin: 0 8px;
+    accent-color: #4a90d9;
+    height: 24px;
+  }
+  .ctrl-row .val { width: 44px; text-align: right; font-weight: 600; color: #357abd; flex-shrink: 0; }
+
+  .run-btn {
+    display: block;
+    width: 100%;
+    padding: 9px;
+    margin-top: 4px;
+    background: #4a90d9;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .run-btn:active { background: #357abd; }
+  .run-btn.pause { background: #e8943a; }
+
+  /* 曲线区域 */
+  canvas.chart { width: 100%; height: 150px; display: block; }
+
+  /* 判断区域 */
+  .judge-body { padding: 10px; text-align: center; }
+  .judge-btns {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  .judge-btn {
+    flex: 1;
+    padding: 9px 4px;
+    border: 2px solid #d0d5dd;
+    background: #fff;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .judge-btn:active { transform: scale(0.96); }
+  .judge-btn.active { border-color: #4a90d9; background: #eaf3fc; color: #357abd; }
+
+  canvas.emoticon { width: 110px; height: 110px; display: block; margin: 0 auto; }
+
+  .footer-hint {
+    text-align: center;
+    font-size: 11px;
+    color: #888;
+    padding: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <header>
+    <h1>自平衡 vs 非自平衡 案例探索</h1>
+    <div class="sub">左列：出水靠重力（托里拆利） · 右列：出水靠水泵</div>
+  </header>
+
+  <div class="grid">
+    <!-- 左上：储罐A（自平衡） -->
+    <div class="panel tank-panel">
+      <div class="panel-title">储罐 A（出水靠重力自流）</div>
+      <div class="panel-body">
+        <canvas id="tankA" class="tank"></canvas>
+        <div class="controls">
+          <div class="ctrl-row">
+            <label>进水阀</label>
+            <input type="range" id="valveA" min="0" max="100" value="50" step="1">
+            <span class="val" id="valveA-val">50%</span>
+          </div>
+          <button class="run-btn" id="btnA">开始 A</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右上：储罐B（非自平衡） -->
+    <div class="panel tank-panel">
+      <div class="panel-title">储罐 B（出水靠水泵强制）</div>
+      <div class="panel-body">
+        <canvas id="tankB" class="tank"></canvas>
+        <div class="controls">
+          <div class="ctrl-row">
+            <label>进水阀</label>
+            <input type="range" id="valveB" min="0" max="100" value="50" step="1">
+            <span class="val" id="valveB-val">50%</span>
+          </div>
+          <div class="ctrl-row">
+            <label>出水泵</label>
+            <input type="range" id="pumpB" min="0" max="100" value="50" step="1">
+            <span class="val" id="pumpB-val">50%</span>
+          </div>
+          <button class="run-btn" id="btnB">开始 B</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 左中：曲线A -->
+    <div class="panel">
+      <div class="panel-title">储罐 A 液位历史曲线</div>
+      <div class="panel-body">
+        <canvas id="chartA" class="chart"></canvas>
+      </div>
+    </div>
+
+    <!-- 右中：曲线B -->
+    <div class="panel">
+      <div class="panel-title">储罐 B 液位历史曲线</div>
+      <div class="panel-body">
+        <canvas id="chartB" class="chart"></canvas>
+      </div>
+    </div>
+
+    <!-- 左下：判断A -->
+    <div class="panel">
+      <div class="panel-title">判断：储罐 A 属于哪种特性？</div>
+      <div class="judge-body">
+        <div class="judge-btns">
+          <button class="judge-btn" data-tank="A" data-ans="self">自平衡</button>
+          <button class="judge-btn" data-tank="A" data-ans="non">非自平衡</button>
+        </div>
+        <canvas id="faceA" class="emoticon"></canvas>
+      </div>
+    </div>
+
+    <!-- 右下：判断B -->
+    <div class="panel">
+      <div class="panel-title">判断：储罐 B 属于哪种特性？</div>
+      <div class="judge-body">
+        <div class="judge-btns">
+          <button class="judge-btn" data-tank="B" data-ans="self">自平衡</button>
+          <button class="judge-btn" data-tank="B" data-ans="non">非自平衡</button>
+        </div>
+        <canvas id="flowerB" class="emoticon"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-hint">← 左右滑动查看完整内容 →</div>
+</div>
+
+<script>
+// ===== 物理模型参数 =====
+const DT = 0.1;              // 仿真步长 s
+const QIN_MAX = 12;          // 最大进水流量 (%液位/s)
+const K_TORRICELLI = 0.85;   // 托里拆利系数：Qout = K * sqrt(L)
+// 验证：50%阀 Qin=6, 平衡 L=(6/0.85)^2 ≈ 49.8 ≈ 50%
+
+// ===== 储罐A 状态（自平衡：出水靠重力）=====
+let levelA = 50, valveA = 50, runningA = false, simTimeA = 0;
+let histA = [];
+
+// ===== 储罐B 状态（非自平衡：出水靠泵）=====
+let levelB = 50, valveB = 50, pumpB = 50, runningB = false, simTimeB = 0;
+let histB = [];
+
+// ===== DOM 引用 =====
+const $ = id => document.getElementById(id);
+const tankACanvas = $("tankA"), tankBCanvas = $("tankB");
+const chartACanvas = $("chartA"), chartBCanvas = $("chartB");
+const faceACanvas = $("faceA"), flowerBCanvas = $("flowerB");
+const valveASlider = $("valveA"), valveAVal = $("valveA-val");
+const valveBSlider = $("valveB"), valveBVal = $("valveB-val");
+const pumpBSlider = $("pumpB"), pumpBVal = $("pumpB-val");
+const btnA = $("btnA"), btnB = $("btnB");
+
+// ===== Canvas 高分屏适配 =====
+function fitCanvas(c) {
+  const r = c.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  if (c.width !== r.width * dpr || c.height !== r.height * dpr) {
+    c.width = r.width * dpr;
+    c.height = r.height * dpr;
+  }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+
+// ===== 绘制储罐 =====
+function drawTank(canvas, level, valveOpen, hasPump, pumpOpen) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const tankX = w * 0.26, tankY = h * 0.12;
+  const tankW = w * 0.46, tankH = h * 0.66;
+  const tankBottom = tankY + tankH;
+
+  // 进水管（左上）
+  const pipeInY = tankY + 10;
+  ctx.strokeStyle = "#5a6a7a"; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(5, pipeInY); ctx.lineTo(tankX, pipeInY);
+  ctx.stroke();
+  // 进水阀
+  drawValve(ctx, 18, pipeInY, valveOpen);
+  // 进水水流
+  if (valveOpen > 0) {
+    ctx.strokeStyle = `rgba(74,144,217,${0.35 + 0.5 * valveOpen / 100})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(30, pipeInY); ctx.lineTo(tankX, pipeInY);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(74,144,217,${0.7 + 0.3 * valveOpen / 100})`;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(tankX + 4 + i * 3, pipeInY + 7 + i * 3, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 罐体
+  ctx.strokeStyle = "#3a4a5a"; ctx.lineWidth = 2;
+  ctx.fillStyle = "#fafcff";
+  ctx.beginPath();
+  ctx.rect(tankX, tankY, tankW, tankH);
+  ctx.fill(); ctx.stroke();
+
+  // 水位填充
+  const waterH = tankH * Math.max(0, Math.min(100, level)) / 100;
+  const waterY = tankBottom - waterH;
+  const grad = ctx.createLinearGradient(0, waterY, 0, tankBottom);
+  grad.addColorStop(0, "rgba(74,144,217,0.55)");
+  grad.addColorStop(1, "rgba(52,120,180,0.85)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(tankX + 1, waterY, tankW - 2, waterH);
+
+  // 水面波纹
+  ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(tankX + 1, waterY);
+  for (let x = 0; x <= tankW - 2; x += 4) {
+    ctx.lineTo(tankX + 1 + x, waterY + Math.sin(x * 0.3 + Date.now() * 0.004) * 1.5);
+  }
+  ctx.stroke();
+
+  // 刻度
+  ctx.strokeStyle = "#ccc"; ctx.fillStyle = "#888"; ctx.font = "9px sans-serif";
+  ctx.textAlign = "right";
+  for (let p = 0; p <= 100; p += 20) {
+    const y = tankBottom - tankH * p / 100;
+    ctx.beginPath(); ctx.moveTo(tankX - 4, y); ctx.lineTo(tankX, y); ctx.stroke();
+    ctx.fillText(p, tankX - 6, y + 3);
+  }
+
+  // 液位数值
+  ctx.fillStyle = "#1a1a1a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(level.toFixed(1) + "%", tankX + tankW / 2, tankY - 6);
+
+  // 出水管（右下，口径=进水管一半，用较细线宽表示）
+  const pipeOutY = tankBottom - 4;
+  const pipeOutX = tankX + tankW;
+  ctx.strokeStyle = "#5a6a7a"; ctx.lineWidth = 2.2;  // 出水管口径=进水管(4)的一半
+  ctx.beginPath();
+  ctx.moveTo(pipeOutX, pipeOutY); ctx.lineTo(w - 5, pipeOutY);
+  ctx.stroke();
+
+  if (hasPump) {
+    // 出水泵
+    drawPump(ctx, pipeOutX + 22, pipeOutY, pumpOpen);
+    if (pumpOpen > 0) {
+      ctx.strokeStyle = `rgba(52,168,120,${0.35 + 0.5 * pumpOpen / 100})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(pipeOutX + 34, pipeOutY); ctx.lineTo(w - 5, pipeOutY);
+      ctx.stroke();
+    }
+  } else {
+    // 出水靠重力：流量随液位 sqrt 变化
+    const outFlow = K_TORRICELLI * Math.sqrt(Math.max(0, level)) / 10;
+    if (outFlow > 0.05) {
+      ctx.strokeStyle = `rgba(52,168,120,${0.25 + 0.6 * outFlow})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(pipeOutX, pipeOutY); ctx.lineTo(w - 5, pipeOutY);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(52,168,120,${0.5 + 0.4 * outFlow})`;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(w - 8, pipeOutY + 5 + i * 4, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// 阀门符号
+function drawValve(ctx, x, y, open) {
+  const r = 8;
+  ctx.strokeStyle = "#3a4a5a"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r); ctx.lineTo(x + r, y);
+  ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+  ctx.closePath();
+  ctx.fillStyle = open > 0 ? "#eaf3fc" : "#f5f5f5";
+  ctx.fill(); ctx.stroke();
+  // 阀杆角度表示开度
+  const angle = (90 - open * 0.9) * Math.PI / 180;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
+  ctx.strokeStyle = "#e84a3a"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = "#666"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(open + "%", x, y - r - 3);
+}
+
+// 泵符号
+function drawPump(ctx, x, y, open) {
+  const r = 9;
+  ctx.strokeStyle = "#3a4a5a"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = open > 0 ? "#e8f7ef" : "#f5f5f5";
+  ctx.fill(); ctx.stroke();
+  // 泵叶轮旋转
+  const spin = Date.now() * 0.006 * (open / 100);
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(spin);
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const a = i * Math.PI * 2 / 3;
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7);
+  }
+  ctx.strokeStyle = open > 0 ? "#34a878" : "#999"; ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = "#666"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(open + "%", x, y - r - 3);
+}
+
+// ===== 绘制液位曲线 =====
+function drawChart(canvas, hist, simTime, color) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const padL = 28, padR = 8, padT = 8, padB = 18;
+  const cw = w - padL - padR, ch = h - padT - padB;
+
+  // 网格 + 纵轴刻度
+  ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.fillStyle = "#999";
+  ctx.font = "9px sans-serif"; ctx.textAlign = "right";
+  for (let p = 0; p <= 100; p += 25) {
+    const y = padT + ch - ch * p / 100;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+    ctx.fillText(p, padL - 3, y + 3);
+  }
+
+  // 横轴从0开始
+  const xMax = Math.max(60, simTime);
+  let xStep = 10;
+  if (xMax > 180) xStep = 30;
+  else if (xMax > 90) xStep = 20;
+  ctx.textAlign = "center";
+  for (let s = 0; s <= xMax; s += xStep) {
+    const x = padL + cw * s / xMax;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ch); ctx.stroke();
+    ctx.fillText(s, x, padT + ch + 12);
+  }
+
+  // 曲线
+  if (hist.length < 2) {
+    ctx.fillStyle = "#bbb"; ctx.textAlign = "center";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("点击「开始」运行仿真", padL + cw / 2, padT + ch / 2);
+    return;
+  }
+  ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineJoin = "round";
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < hist.length; i++) {
+    const p = hist[i];
+    const x = padL + cw * p.t / xMax;
+    const y = padT + ch - ch * Math.max(0, Math.min(100, p.level)) / 100;
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // 当前点
+  const last = hist[hist.length - 1];
+  const x = padL + cw * last.t / xMax;
+  const y = padT + ch - ch * Math.max(0, Math.min(100, last.level)) / 100;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+// ===== 笑脸 / 哭脸 =====
+function drawFace(canvas, state) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.4;
+
+  if (state === null) {
+    // 待选择
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = "#F5F5F5"; ctx.fill();
+    ctx.strokeStyle = "#BDBDBD"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = "#999"; ctx.font = "bold 30px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("?", cx, cy + 11);
+    ctx.font = "10px sans-serif";
+    ctx.fillText("请先选择", cx, cy + r + 16);
+    return;
+  }
+
+  const isSmile = state === "smile";
+  // 脸
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = isSmile ? "#FFE082" : "#FFCDD2";
+  ctx.fill();
+  ctx.strokeStyle = isSmile ? "#F9A825" : "#E53935";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // 眼睛
+  if (isSmile) {
+    ctx.strokeStyle = "#5D4037"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.35, cy - r * 0.12, r * 0.13, Math.PI, 2 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + r * 0.35, cy - r * 0.12, r * 0.13, Math.PI, 2 * Math.PI);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#C62828";
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.35, cy - r * 0.12, r * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + r * 0.35, cy - r * 0.12, r * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    // 眼泪
+    ctx.fillStyle = "#42A5F5";
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.35, cy - r * 0.02);
+    ctx.quadraticCurveTo(cx - r * 0.42, cy + r * 0.12, cx - r * 0.33, cy + r * 0.18);
+    ctx.quadraticCurveTo(cx - r * 0.28, cy + r * 0.12, cx - r * 0.35, cy - r * 0.02);
+    ctx.fill();
+  }
+
+  // 嘴
+  ctx.strokeStyle = isSmile ? "#5D4037" : "#C62828";
+  ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath();
+  if (isSmile) {
+    ctx.arc(cx, cy + r * 0.08, r * 0.38, 0.12 * Math.PI, 0.88 * Math.PI);
+  } else {
+    ctx.arc(cx, cy + r * 0.5, r * 0.38, 1.12 * Math.PI, 1.88 * Math.PI);
+  }
+  ctx.stroke();
+}
+
+// ===== 小红花 =====
+function drawFlower(canvas, state) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  if (state === null) {
+    ctx.fillStyle = "#999"; ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("请先选择", w / 2, h / 2);
+    return;
+  }
+
+  const cx = w / 2;
+  const isBlooming = state === "blooming";
+
+  // 花茎
+  ctx.strokeStyle = "#4CAF50"; ctx.lineWidth = 3.5; ctx.lineCap = "round";
+  ctx.beginPath();
+  if (isBlooming) {
+    // 盛开：茎直立向上挺
+    ctx.moveTo(cx, h - 6);
+    ctx.lineTo(cx, h * 0.46);
+  } else {
+    // 弯腰低下头：茎大幅弯曲下垂
+    ctx.moveTo(cx, h - 6);
+    ctx.quadraticCurveTo(cx + 14, h * 0.78, cx + 24, h * 0.5);
+  }
+  ctx.stroke();
+
+  // 叶子
+  ctx.fillStyle = "#66BB6A";
+  ctx.beginPath();
+  ctx.ellipse(cx + 7, h * 0.66, 7, 3.5, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 花朵
+  const flowerX = isBlooming ? cx : cx + 24;
+  const flowerY = isBlooming ? h * 0.34 : h * 0.38;
+  const petalR = isBlooming ? 13 : 9;
+
+  // 花瓣
+  ctx.fillStyle = isBlooming ? "#E53935" : "#EF9A9A";
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3 + (isBlooming ? 0 : Math.PI / 6);
+    const px = flowerX + Math.cos(a) * petalR * 0.85;
+    const py = flowerY + Math.sin(a) * petalR * 0.85;
+    ctx.beginPath();
+    ctx.ellipse(px, py, petalR * 0.75, petalR * 0.5, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 花瓣描边
+  ctx.strokeStyle = isBlooming ? "#C62828" : "#E57373"; ctx.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3 + (isBlooming ? 0 : Math.PI / 6);
+    const px = flowerX + Math.cos(a) * petalR * 0.85;
+    const py = flowerY + Math.sin(a) * petalR * 0.85;
+    ctx.beginPath();
+    ctx.ellipse(px, py, petalR * 0.75, petalR * 0.5, a, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 花心（放大以容纳表情）
+  const coreR = petalR * 0.6;
+  ctx.fillStyle = isBlooming ? "#FFB300" : "#BCAAA4";
+  ctx.beginPath();
+  ctx.arc(flowerX, flowerY, coreR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 花心表情
+  const eyeOffsetX = coreR * 0.42;
+  const eyeY = flowerY - coreR * 0.12;
+
+  if (isBlooming) {
+    // 微笑：两个点眼 + 上弯嘴
+    ctx.fillStyle = "#3E2723";
+    ctx.beginPath();
+    ctx.arc(flowerX - eyeOffsetX, eyeY, 1.4, 0, Math.PI * 2);
+    ctx.arc(flowerX + eyeOffsetX, eyeY, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    // 微笑嘴（上弧）
+    ctx.strokeStyle = "#3E2723"; ctx.lineWidth = 1.4; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(flowerX, flowerY + coreR * 0.08, coreR * 0.45, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+  } else {
+    // 悲伤：八字眉 + 下弯嘴
+    ctx.strokeStyle = "#3E2723"; ctx.lineWidth = 1.3; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(flowerX - eyeOffsetX - 2, eyeY - 1.8);
+    ctx.lineTo(flowerX - eyeOffsetX + 2, eyeY + 0.3);
+    ctx.moveTo(flowerX + eyeOffsetX - 2, eyeY + 0.3);
+    ctx.lineTo(flowerX + eyeOffsetX + 2, eyeY - 1.8);
+    ctx.stroke();
+    // 下弯嘴（倒弧）
+    ctx.beginPath();
+    ctx.arc(flowerX, flowerY + coreR * 0.7, coreR * 0.4, 1.15 * Math.PI, 1.85 * Math.PI);
+    ctx.stroke();
+
+    // 落泪：花心右眼下方一滴蓝色泪滴
+    ctx.fillStyle = "#42A5F5";
+    const tearX = flowerX + eyeOffsetX;
+    const tearY = eyeY + 2.5;
+    ctx.beginPath();
+    ctx.moveTo(tearX, tearY);
+    ctx.quadraticCurveTo(tearX - 2.4, tearY + 4, tearX, tearY + 7.5);
+    ctx.quadraticCurveTo(tearX + 2.4, tearY + 4, tearX, tearY);
+    ctx.fill();
+    // 泪滴高光
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.beginPath();
+    ctx.arc(tearX - 0.7, tearY + 4.2, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ===== 仿真步进 =====
+function stepA() {
+  if (!runningA) return;
+  const Qin = (valveA / 100) * QIN_MAX;
+  // 托里拆利：出水靠重力，流量 = K * sqrt(液位)
+  const Qout = K_TORRICELLI * Math.sqrt(Math.max(0, levelA));
+  levelA += (Qin - Qout) * DT;
+  levelA = Math.max(0, Math.min(100, levelA));
+  simTimeA += DT;
+  histA.push({ t: simTimeA, level: levelA });
+  if (histA.length > 3000) histA.shift();
+}
+
+function stepB() {
+  if (!runningB) return;
+  const Qin = (valveB / 100) * QIN_MAX;
+  // 出水泵强制出水：流量与液位无关
+  const Qout = (pumpB / 100) * QIN_MAX;
+  levelB += (Qin - Qout) * DT;
+  levelB = Math.max(0, Math.min(100, levelB));
+  simTimeB += DT;
+  histB.push({ t: simTimeB, level: levelB });
+  if (histB.length > 3000) histB.shift();
+}
+
+// ===== 主循环 =====
+function loop() {
+  stepA();
+  stepB();
+  drawTank(tankACanvas, levelA, valveA, false, 0);
+  drawTank(tankBCanvas, levelB, valveB, true, pumpB);
+  drawChart(chartACanvas, histA, simTimeA, "#4a90d9");
+  drawChart(chartBCanvas, histB, simTimeB, "#e8943a");
+  setTimeout(loop, DT * 1000);
+}
+
+// ===== 交互绑定 =====
+valveASlider.addEventListener("input", e => {
+  valveA = +e.target.value;
+  valveAVal.textContent = valveA + "%";
+});
+valveBSlider.addEventListener("input", e => {
+  valveB = +e.target.value;
+  valveBVal.textContent = valveB + "%";
+});
+pumpBSlider.addEventListener("input", e => {
+  pumpB = +e.target.value;
+  pumpBVal.textContent = pumpB + "%";
+});
+
+btnA.addEventListener("click", () => {
+  runningA = !runningA;
+  btnA.textContent = runningA ? "暂停 A" : "开始 A";
+  btnA.classList.toggle("pause", runningA);
+});
+btnB.addEventListener("click", () => {
+  runningB = !runningB;
+  btnB.textContent = runningB ? "暂停 B" : "开始 B";
+  btnB.classList.toggle("pause", runningB);
+});
+
+// 判断按钮
+document.querySelectorAll(".judge-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tank = btn.dataset.tank;
+    const ans = btn.dataset.ans;
+    // 同组取消 active
+    document.querySelectorAll(`.judge-btn[data-tank="${tank}"]`).forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    if (tank === "A") {
+      // 左下：选自平衡→笑脸，选非自平衡→哭脸
+      drawFace(faceACanvas, ans === "self" ? "smile" : "cry");
+    } else {
+      // 右下：选自平衡→低下头的小红花，选非自平衡→向上盛开的小红花
+      drawFlower(flowerBCanvas, ans === "non" ? "blooming" : "droop");
+    }
+  });
+});
+
+// 初始绘制
+drawFace(faceACanvas, null);
+drawFlower(flowerBCanvas, null);
+loop();
+</script>
+</body>
+</html>
