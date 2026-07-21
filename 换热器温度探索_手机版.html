@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>换热器温度探索</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #eef2f7; color: #1f2937;
+    -webkit-text-size-adjust: 100%;
+  }
+  body { min-height: 100vh; padding: 8px; }
+  .wrap { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+
+  header {
+    background: linear-gradient(135deg,#1565C0,#0D47A1);
+    color: #fff; padding: 10px 14px; border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.12);
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .sub { font-size: 11px; opacity: .85; margin-top: 2px; }
+
+  .panel {
+    background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    overflow: hidden;
+  }
+  .panel-title {
+    background: #f1f5f9; padding: 7px 12px; font-size: 13px; font-weight: 600;
+    color: #334155; border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-title .badge { font-size: 10px; color:#64748b; font-weight: 400; }
+  .panel-body { padding: 10px; }
+
+  /* 区域1：工艺图 */
+  #process-panel .panel-body { display: flex; flex-direction: column; gap: 8px; }
+  #exchanger-canvas { width: 100%; height: 200px; display: block; background: #fafafa; border-radius: 6px; }
+  .controls { display: flex; flex-direction: column; gap: 8px; }
+  .ctrl-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .ctrl-row label { width: 78px; flex-shrink: 0; color: #475569; }
+  .ctrl-row input[type=range] { flex: 1; height: 22px; }
+  .ctrl-row .val { width: 54px; text-align: right; font-weight: 600; color: #1565C0; }
+  .btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 2px; }
+  .btn {
+    padding: 6px 16px; border: none; border-radius: 6px; font-size: 13px;
+    font-weight: 600; cursor: pointer; color: #fff;
+  }
+  .btn-start { background: #16a34a; }
+  .btn-pause { background: #d97706; }
+  .btn-reset { background: #6b7280; }
+  .btn:active { transform: scale(.96); }
+
+  /* 区域2：曲线 */
+  #chart-panel .panel-body { padding: 8px; }
+  #temp-chart { width: 100%; height: 170px; display: block; background: #fcfcfd; border-radius: 6px; }
+
+  /* 区域3：判断 */
+  #judge-panel .panel-body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .judge-btns { display: flex; flex-direction: column; gap: 6px; }
+  .jbtn {
+    padding: 8px 14px; border: 2px solid #cbd5e1; border-radius: 8px;
+    background: #fff; font-size: 12px; font-weight: 600; color: #475569;
+    cursor: pointer; min-width: 96px;
+  }
+  .jbtn.active { border-color: #1565C0; background: #eff6ff; color: #1565C0; }
+  #face-canvas { width: 96px; height: 96px; display: block; }
+  .surprise-wrap { margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .surprise-btn {
+    padding: 8px 12px; border: none; border-radius: 20px; cursor: pointer;
+    background: linear-gradient(135deg,#f59e0b,#ef4444); color: #fff;
+    font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(239,68,68,.35);
+  }
+  .surprise-btn:active { transform: scale(.95); }
+
+  /* 惊喜弹层 */
+  #surprise-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    z-index: 100; align-items: center; justify-content: center; padding: 16px;
+  }
+  #surprise-modal.show { display: flex; }
+  .surprise-card {
+    background: #fff; border-radius: 14px; padding: 18px 16px; max-width: 340px;
+    text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.3);
+    animation: pop .35s ease;
+  }
+  @keyframes pop { from{transform:scale(.7);opacity:0} to{transform:scale(1);opacity:1} }
+  #cartoon-canvas { width: 160px; height: 180px; display: block; margin: 0 auto; }
+  .surprise-card .msg {
+    margin-top: 10px; font-size: 15px; font-weight: 700; color: #b91c1c; line-height: 1.5;
+  }
+  .surprise-card .close-btn {
+    margin-top: 14px; padding: 6px 22px; border: none; border-radius: 6px;
+    background: #1565C0; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+
+  /* 滚动条样式（手机端可见） */
+  ::-webkit-scrollbar { width: 6px; height: 6px; -webkit-appearance: none; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>换热器温度探索</h1>
+    <div class="sub">间壁式换热器 · 蒸汽加热工艺介质</div>
+  </header>
+
+  <!-- 区域1：换热器工艺 -->
+  <div class="panel" id="process-panel">
+    <div class="panel-title">① 换热器工艺 <span class="badge">蒸汽盘管间接加热 · 出口温度动态显示</span></div>
+    <div class="panel-body">
+      <canvas id="exchanger-canvas"></canvas>
+      <div class="controls">
+        <div class="ctrl-row">
+          <label>介质流量</label>
+          <input type="range" id="fluid-slider" min="0" max="100" value="50" step="1">
+          <span class="val" id="fluid-val">50%</span>
+        </div>
+        <div class="ctrl-row">
+          <label>蒸汽流量</label>
+          <input type="range" id="steam-slider" min="0" max="100" value="50" step="1">
+          <span class="val" id="steam-val">50%</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-start" id="start-btn">开始</button>
+          <button class="btn btn-reset" id="reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 区域2：温度历史曲线 -->
+  <div class="panel" id="chart-panel">
+    <div class="panel-title">② 出口温度历史曲线 <span class="badge">红线=出口温度 · 蓝虚线=进口温度</span></div>
+    <div class="panel-body"><canvas id="temp-chart"></canvas></div>
+  </div>
+
+  <!-- 区域3：判断 + 惊喜 -->
+  <div class="panel" id="judge-panel">
+    <div class="panel-title">③ 判断与惊喜</div>
+    <div class="panel-body">
+      <div class="judge-btns">
+        <button class="jbtn" data-ans="self">自平衡</button>
+        <button class="jbtn" data-ans="non">非自平衡</button>
+      </div>
+      <canvas id="face-canvas"></canvas>
+      <div class="surprise-wrap">
+        <button class="surprise-btn" id="surprise-btn">🎁 惊喜</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 惊喜弹层 -->
+<div id="surprise-modal">
+  <div class="surprise-card">
+    <canvas id="cartoon-canvas"></canvas>
+    <div class="msg">我们人体恒温，也是自平衡系统！</div>
+    <button class="close-btn" id="close-surprise">知道了</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // ===== 物理参数（间壁式换热器，一阶惯性自平衡对象）=====
+  const TIN = 20;        // 工艺介质进口温度 ℃（恒定）
+  const TS  = 150;       // 蒸汽温度 ℃（恒定）
+  const MCP = 1200;      // M*Cp，换热器内介质热容 kJ/℃（增大热容→大滞后→响应变慢）
+  const CP  = 4.18;      // 介质比热 kJ/(kg·℃)
+  const F_MAX = 10;      // 最大介质流量 kg/s
+  const UA_MAX = 20;     // 最大传热系数*面积 kW/℃（随蒸汽流量变化）
+  const DELAY = 4;       // 蒸汽侧纯滞后 s（热量传递到出口的传输延迟）
+  const DT = 0.1;        // 仿真步长 s
+
+  // ===== 状态 =====
+  let fluidPct = 50, steamPct = 50;
+  let temp = 20;         // 出口温度 ℃
+  let simTime = 0;
+  let running = false;
+  let hist = [];         // {t, temp}
+  let flowPhase = 0;     // 流动动画相位
+  let uaHist = [];       // 蒸汽UA历史（用于纯滞后）
+
+  const fluidSlider = $("fluid-slider"), fluidVal = $("fluid-val");
+  const steamSlider = $("steam-slider"), steamVal = $("steam-val");
+  const startBtn = $("start-btn"), resetBtn = $("reset-btn");
+
+  fluidSlider.oninput = () => { fluidPct = +fluidSlider.value; fluidVal.textContent = fluidPct + "%"; };
+  steamSlider.oninput = () => { steamPct = +steamSlider.value; steamVal.textContent = steamPct + "%"; };
+  startBtn.onclick = () => { running = !running; startBtn.textContent = running ? "暂停" : "开始"; startBtn.className = running ? "btn btn-pause" : "btn btn-start"; };
+  resetBtn.onclick = () => {
+    running = false; simTime = 0; temp = TIN; hist = []; uaHist = [];
+    startBtn.textContent = "开始"; startBtn.className = "btn btn-start";
+  };
+
+  // ===== Canvas 适配高分屏 =====
+  function fitCanvas(canvas){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if(canvas.width !== rect.width*dpr || canvas.height !== rect.height*dpr){
+      canvas.width = rect.width*dpr; canvas.height = rect.height*dpr;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return { ctx, w: rect.width, h: rect.height };
+  }
+
+  // 温度→颜色（20℃蓝 → 150℃红）
+  function tempColor(t){
+    const r = Math.max(0, Math.min(1, (t - TIN) / (TS - TIN)));
+    const cr = Math.round(33 + r*(244-33));
+    const cg = Math.round(150 + r*(67-150));
+    const cb = Math.round(243 + r*(54-243));
+    return `rgb(${cr},${cg},${cb})`;
+  }
+
+  // ===== 区域1：换热器工艺图 =====
+  const exCanvas = $("exchanger-canvas");
+  function drawExchanger(){
+    const { ctx, w, h } = fitCanvas(exCanvas);
+    ctx.clearRect(0,0,w,h);
+    const pad = 8;
+
+    // 换热器壳体（横向圆角矩形+椭圆封头）
+    const shellX = pad+24, shellY = h*0.22, shellW = w-2*(pad+24), shellH = h*0.56;
+    ctx.fillStyle = "#f8fafc"; ctx.strokeStyle = "#475569"; ctx.lineWidth = 2;
+    roundRect(ctx, shellX, shellY, shellW, shellH, 10); ctx.fill(); ctx.stroke();
+
+    // 壳内工艺介质填充（颜色随出口温度）
+    ctx.save();
+    roundRect(ctx, shellX, shellY, shellW, shellH, 10); ctx.clip();
+    ctx.fillStyle = tempColor(temp);
+    ctx.globalAlpha = 0.22;
+    ctx.fillRect(shellX, shellY, shellW, shellH);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // 蒸汽盘管（壳内蛇形管，红色）—— 6排等间距，所有半圆半径统一
+    ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    const rows = 6;                                       // 水平排数
+    const coilY0 = shellY + 18, coilY1 = shellY + shellH - 18;
+    const coilX0 = shellX + 18, coilX1 = shellX + shellW - 18;
+    const gap = (coilY1 - coilY0) / (rows - 1);           // 相邻两排等间距
+    const R = gap / 2;                                    // 所有半圆统一半径
+    const lineX0 = coilX0 + R;                            // 水平段左端（内缩R给左侧半圆）
+    const lineX1 = coilX1 - R;                            // 水平段右端（内缩R给右侧半圆）
+    const ys = [];
+    for (let i = 0; i < rows; i++) ys.push(coilY0 + i * gap);
+
+    ctx.beginPath();
+    // 蒸汽从顶部左侧短管进入
+    ctx.moveTo(coilX0, shellY + 2);
+    ctx.lineTo(coilX0, ys[0]);
+
+    // 逐排绘制：偶数排去程(左→右)+右侧半圆，奇数排回程(右→左)+左侧半圆
+    for (let i = 0; i < rows - 1; i++) {
+      const yMid = (ys[i] + ys[i + 1]) / 2;
+      if (i % 2 === 0) {
+        // 去程：左→右，右侧半圆顺时针下转
+        ctx.lineTo(lineX1, ys[i]);
+        ctx.arc(lineX1, yMid, R, -Math.PI / 2, Math.PI / 2, false);
+      } else {
+        // 回程：右→左，左侧半圆逆时针下转
+        ctx.lineTo(lineX0, ys[i]);
+        ctx.arc(lineX0, yMid, R, -Math.PI / 2, Math.PI / 2, true);
+      }
+    }
+    // 最后一排（第6排，回程）：右→左到壳体左端
+    ctx.lineTo(coilX0, ys[rows - 1]);
+    // 从底部左侧短管流出
+    ctx.lineTo(coilX0, shellY + shellH - 2);
+    ctx.stroke();
+    // 盘管标注
+    ctx.fillStyle = "#dc2626"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("蒸汽盘管", shellX + shellW/2, shellY - 4);
+
+    // 蒸汽进口（顶部左，红色箭头，与盘管入口相连）
+    drawFlowArrow(ctx, shellX + 18, shellY - 18, shellX + 18, shellY + 2, "#dc2626", "蒸汽 Ts=150℃", steamPct);
+    // 冷凝水出口（底部左，与盘管出口相连）
+    drawFlowArrow(ctx, shellX + 18, shellY + shellH - 2, shellX + 18, shellY + shellH + 18, "#94a3b8", "冷凝水", 100);
+
+    // 工艺介质进口（左下，蓝色）
+    drawFlowArrow(ctx, shellX - 18, h*0.7, shellX - 2, h*0.7, "#2196F3", "介质 Tin=20℃", fluidPct);
+    // 工艺介质出口（右上，温度色）
+    const outCol = tempColor(temp);
+    drawFlowArrow(ctx, shellX + shellW + 2, h*0.3, shellX + shellW + 18, h*0.3, outCol, "", fluidPct);
+
+    // 出口温度显示器（右上角圆框+大字）
+    const dispX = shellX + shellW + 30, dispY = h*0.3;
+    if(dispX + 40 < w){
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = outCol; ctx.lineWidth = 2;
+      roundRect(ctx, dispX, dispY-16, 44, 32, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = outCol; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(temp.toFixed(1), dispX+22, dispY+2);
+      ctx.font = "8px sans-serif"; ctx.fillStyle="#64748b";
+      ctx.fillText("℃", dispX+22, dispY+12);
+    } else {
+      // 显示器放壳体上方
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = outCol; ctx.lineWidth = 2;
+      roundRect(ctx, w-72, 8, 60, 26, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = outCol; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(temp.toFixed(1)+"℃", w-42, 24);
+    }
+
+    // 标题
+    ctx.fillStyle = "#334155"; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("间壁式换热器（盘管式）", pad+2, 14);
+  }
+
+  function drawFlowArrow(ctx, x1, y1, x2, y2, color, label, pct){
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // 箭头
+    const ang = Math.atan2(y2-y1, x2-x1);
+    const ah = 6;
+    ctx.beginPath();
+    ctx.moveTo(x2,y2);
+    ctx.lineTo(x2 - ah*Math.cos(ang-0.4), y2 - ah*Math.sin(ang-0.4));
+    ctx.lineTo(x2 - ah*Math.cos(ang+0.4), y2 - ah*Math.sin(ang+0.4));
+    ctx.closePath(); ctx.fill();
+    // 流动小点（动画）
+    if(pct>0){
+      ctx.fillStyle = color;
+      const len = Math.hypot(x2-x1,y2-y1);
+      const pos = (flowPhase % 1);
+      const px = x1 + (x2-x1)*pos, py = y1 + (y2-y1)*pos;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.arc(px,py,2.5,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    if(label){
+      ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+      ctx.fillStyle = color;
+      // 标签放在箭头中点偏旁
+      const mx = (x1+x2)/2, my=(y1+y2)/2;
+      ctx.fillText(label, mx, my - 6);
+    }
+  }
+
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ===== 区域2：温度曲线 =====
+  const chartCanvas = $("temp-chart");
+  function drawChart(){
+    const { ctx, w, h } = fitCanvas(chartCanvas);
+    ctx.clearRect(0,0,w,h);
+    const padL=34, padR=10, padT=10, padB=22;
+    const cw = w-padL-padR, ch = h-padT-padB;
+    const tMin=0, tMax=20, tRange=tMax-tMin;
+    const yMin=0, yMax=160;
+
+    // 背景
+    ctx.fillStyle="#fcfcfd"; ctx.fillRect(padL,padT,cw,ch);
+
+    // 网格
+    ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1; ctx.font="9px sans-serif"; ctx.fillStyle="#94a3b8";
+    // 纵轴
+    for(let v=0; v<=160; v+=40){
+      const y = padT + ch - ch*v/yMax;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+cw,y); ctx.stroke();
+      ctx.textAlign="right"; ctx.fillText(v+"℃", padL-4, y+3);
+    }
+    // 横轴（从0开始，自适应）
+    const xMax = Math.max(20, Math.ceil(simTime/10)*10 + 10);
+    const xStep = xMax<=40 ? 5 : (xMax<=120 ? 10 : 20);
+    ctx.textAlign="center";
+    for(let s=0; s<=xMax; s+=xStep){
+      const x = padL + cw*s/xMax;
+      ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,padT+ch); ctx.stroke();
+      ctx.fillText(s+"s", x, padT+ch+13);
+    }
+
+    // 进口温度参考线（蓝色虚线 20℃）
+    const yIn = padT + ch - ch*TIN/yMax;
+    ctx.strokeStyle="#2196F3"; ctx.lineWidth=1.4; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(padL,yIn); ctx.lineTo(padL+cw,yIn); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#2196F3"; ctx.textAlign="left"; ctx.font="9px sans-serif";
+    ctx.fillText("Tin=20℃", padL+4, yIn-3);
+
+    // 温度曲线
+    if(hist.length>=2){
+      ctx.strokeStyle="#dc2626"; ctx.lineWidth=2; ctx.beginPath();
+      let started=false;
+      for(let i=0;i<hist.length;i++){
+        const p=hist[i];
+        const x = padL + cw*p.t/xMax;
+        const y = padT + ch - ch*Math.max(0,Math.min(yMax,p.temp))/yMax;
+        if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+      // 当前点
+      const last = hist[hist.length-1];
+      const lx = padL + cw*last.t/xMax, ly = padT + ch - ch*last.temp/yMax;
+      ctx.fillStyle="#dc2626"; ctx.beginPath(); ctx.arc(lx,ly,3,0,Math.PI*2); ctx.fill();
+    }
+
+    // 轴标签
+    ctx.fillStyle="#64748b"; ctx.font="9px sans-serif"; ctx.textAlign="left";
+    ctx.fillText("温度", 4, padT+8);
+    ctx.textAlign="right"; ctx.fillText("时间(s)", w-4, h-4);
+  }
+
+  // ===== 区域3：笑脸/哭脸 =====
+  const faceCanvas = $("face-canvas");
+  function drawFace(state){
+    const { ctx, w, h } = fitCanvas(faceCanvas);
+    ctx.clearRect(0,0,w,h);
+    if(state===null){
+      ctx.fillStyle="#94a3b8"; ctx.font="11px sans-serif"; ctx.textAlign="center";
+      ctx.fillText("请先选择", w/2, h/2);
+      return;
+    }
+    const cx=w/2, cy=h/2, r=w*0.36;
+    // 脸
+    ctx.fillStyle = state==="happy" ? "#FDD835" : "#EF5350";
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = state==="happy" ? "#F9A825" : "#C62828"; ctx.lineWidth=2; ctx.stroke();
+    // 眼睛
+    ctx.fillStyle = "#3E2723";
+    if(state==="happy"){
+      // 弯弯笑眼
+      ctx.strokeStyle="#3E2723"; ctx.lineWidth=2.2; ctx.lineCap="round";
+      ctx.beginPath(); ctx.arc(cx-r*0.38, cy-r*0.12, r*0.16, Math.PI, 2*Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx+r*0.38, cy-r*0.12, r*0.16, Math.PI, 2*Math.PI); ctx.stroke();
+    } else {
+      // 哭眼（圆点+眼泪）
+      ctx.beginPath();
+      ctx.arc(cx-r*0.38, cy-r*0.12, r*0.12, 0, Math.PI*2);
+      ctx.arc(cx+r*0.38, cy-r*0.12, r*0.12, 0, Math.PI*2);
+      ctx.fill();
+      // 眼泪
+      ctx.fillStyle="#42A5F5";
+      ctx.beginPath();
+      ctx.moveTo(cx+r*0.38, cy-r*0.02);
+      ctx.quadraticCurveTo(cx+r*0.38-r*0.1, cy+r*0.12, cx+r*0.38, cy+r*0.22);
+      ctx.quadraticCurveTo(cx+r*0.38+r*0.1, cy+r*0.12, cx+r*0.38, cy-r*0.02);
+      ctx.fill();
+    }
+    // 嘴
+    ctx.strokeStyle="#3E2723"; ctx.lineWidth=2.2; ctx.lineCap="round";
+    ctx.beginPath();
+    if(state==="happy"){
+      ctx.arc(cx, cy+r*0.1, r*0.4, 0.15*Math.PI, 0.85*Math.PI);
+    } else {
+      ctx.arc(cx, cy+r*0.45, r*0.4, 1.15*Math.PI, 1.85*Math.PI);
+    }
+    ctx.stroke();
+  }
+  drawFace(null);
+
+  // 判断按钮
+  let judgeState = null;
+  document.querySelectorAll(".jbtn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".jbtn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      const ans = btn.dataset.ans;
+      judgeState = ans;
+      // 换热器是自平衡对象：选"自平衡"→笑脸(对)，选"非自平衡"→哭脸(错)
+      drawFace(ans === "self" ? "happy" : "sad");
+    };
+  });
+
+  // ===== 惊喜弹层 =====
+  const surpriseModal = $("surprise-modal");
+  const cartoonCanvas = $("cartoon-canvas");
+  $("surprise-btn").onclick = () => {
+    surpriseModal.classList.add("show");
+    drawCartoon();
+  };
+  $("close-surprise").onclick = () => surpriseModal.classList.remove("show");
+  surpriseModal.onclick = (e) => { if(e.target===surpriseModal) surpriseModal.classList.remove("show"); };
+
+  function drawCartoon(){
+    const { ctx, w, h } = fitCanvas(cartoonCanvas);
+    ctx.clearRect(0,0,w,h);
+    const cx = w/2;
+
+    // 身体（白大褂）
+    ctx.fillStyle = "#fff"; ctx.strokeStyle="#475569"; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(cx-32, h*0.45);
+    ctx.lineTo(cx-40, h*0.95);
+    ctx.lineTo(cx+40, h*0.95);
+    ctx.lineTo(cx+32, h*0.45);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 领口
+    ctx.beginPath();
+    ctx.moveTo(cx-12, h*0.45); ctx.lineTo(cx, h*0.55); ctx.lineTo(cx+12, h*0.45);
+    ctx.stroke();
+    // 红十字（医生标志）
+    ctx.fillStyle="#dc2626";
+    ctx.fillRect(cx-3, h*0.62, 6, 16);
+    ctx.fillRect(cx-8, h*0.67, 16, 6);
+
+    // 头
+    ctx.fillStyle="#FFE0B2"; ctx.strokeStyle="#8D6E63"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx, h*0.25, 28, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // 头发
+    ctx.fillStyle="#5D4037";
+    ctx.beginPath();
+    ctx.arc(cx, h*0.25, 28, Math.PI, 2*Math.PI);
+    ctx.fill();
+    // 眼睛（弯弯笑眼）
+    ctx.strokeStyle="#3E2723"; ctx.lineWidth=2; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(cx-10, h*0.24, 3.5, Math.PI, 2*Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx+10, h*0.24, 3.5, Math.PI, 2*Math.PI); ctx.stroke();
+    // 微笑嘴
+    ctx.beginPath(); ctx.arc(cx, h*0.27, 8, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+    // 腮红
+    ctx.fillStyle="rgba(239,83,80,0.35)";
+    ctx.beginPath(); ctx.arc(cx-16, h*0.29, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+16, h*0.29, 4, 0, Math.PI*2); ctx.fill();
+
+    // 竖大拇指（右手）
+    ctx.fillStyle="#FFE0B2"; ctx.strokeStyle="#8D6E63"; ctx.lineWidth=2;
+    // 手掌
+    roundRect(ctx, cx+34, h*0.5, 16, 20, 5); ctx.fill(); ctx.stroke();
+    // 大拇指
+    roundRect(ctx, cx+38, h*0.36, 8, 18, 4); ctx.fill(); ctx.stroke();
+
+    // 恒温符号（体温37℃）
+    ctx.fillStyle="#dc2626"; ctx.font="bold 11px sans-serif"; ctx.textAlign="center";
+    ctx.fillText("37℃", cx, h*0.92);
+  }
+
+  // ===== 仿真步进 =====
+  function step(){
+    if(!running) return;
+    const F = (fluidPct/100) * F_MAX;
+    const uaNow = (steamPct/100) * UA_MAX;
+    // 蒸汽侧纯滞后：取 DELAY 秒前的UA值参与换热计算
+    uaHist.push({ t: simTime, ua: uaNow });
+    let uaEff = 0;
+    for(let p of uaHist){ if(p.t <= simTime - DELAY) uaEff = p.ua; }
+    while(uaHist.length > 100 && uaHist[0].t < simTime - DELAY - 1) uaHist.shift();
+    // dT/dt = [F*Cp*(Tin-T) + UA*(Ts-T)] / (M*Cp)，UA经纯滞后
+    const dT = (F*CP*(TIN - temp) + uaEff*(TS - temp)) / MCP;
+    temp += dT * DT;
+    temp = Math.max(0, Math.min(200, temp));
+    simTime += DT;
+    hist.push({ t: simTime, temp: temp });
+    if(hist.length > 3000) hist.shift();
+    flowPhase += 0.05;
+  }
+
+  // ===== 主循环 =====
+  function loop(){
+    step();
+    drawExchanger();
+    drawChart();
+    requestAnimationFrame(loop);
+  }
+
+  // 初始绘制
+  drawExchanger();
+  drawChart();
+  loop();
+
+})();
+</script>
+</body>
+</html>
