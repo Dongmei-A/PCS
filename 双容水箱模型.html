@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>双容水箱模型</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f0f2f5;color:#1a1a1a}
+.page-wrap{max-width:900px;margin:0 auto;padding:12px}
+header{background:linear-gradient(135deg,#4a90d9,#357abd);color:#fff;padding:12px 16px;border-radius:10px;margin-bottom:10px;text-align:center}
+header h1{font-size:18px;font-weight:600}
+header .sub{font-size:12px;opacity:.92;margin-top:3px}
+.panel{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:10px}
+.panel-title{background:#f7f9fc;padding:8px 12px;font-size:13px;font-weight:600;color:#333;border-bottom:1px solid #eef0f4;display:flex;justify-content:space-between;align-items:center}
+.legend{display:flex;gap:12px;font-weight:500}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:#555}
+.legend-dot{width:14px;height:3px;border-radius:2px}
+.panel-body{padding:6px}
+.model-scroll{overflow-x:auto}
+canvas.model{width:100%;height:640px;display:block;min-width:640px}
+canvas.chart{width:100%;height:240px;display:block}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:10px 12px 4px}
+.ctrl-block{background:#f7f9fc;border-radius:8px;padding:10px 12px}
+.ctrl-block h3{font-size:13px;color:#357abd;margin-bottom:8px;font-weight:600}
+.ctrl-block.t2 h3{color:#2a9d8f}
+.ctrl-block.t3 h3{color:#c47820}
+.ctrl-row{display:flex;align-items:center;font-size:12px}
+.ctrl-row label{width:50px;color:#555;flex-shrink:0}
+.ctrl-row input[type=range]{flex:1;margin:0 8px;accent-color:#4a90d9;height:22px}
+.ctrl-row .val{width:48px;text-align:right;font-weight:600;color:#357abd;flex-shrink:0}
+.ctrl-block.t2 input[type=range]{accent-color:#2a9d8f}
+.ctrl-block.t2 .val{color:#2a9d8f}
+.ctrl-block.t3 input[type=range]{accent-color:#c47820}
+.ctrl-block.t3 .val{color:#c47820}
+.btn-row{display:flex;gap:8px;padding:0 12px 12px}
+.btn{flex:1;padding:9px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:#fff}
+.btn-run{background:#4a90d9}
+.btn-run:active{background:#357abd}
+.btn-run.pause{background:#e8943a}
+.btn-reset{background:#8a94a6}
+.btn-reset:active{background:#727b8c}
+.data-row{display:flex;gap:10px;padding:0 12px 12px;flex-wrap:wrap}
+.data-chip{flex:1;min-width:90px;background:#f7f9fc;border-left:3px solid #4a90d9;border-radius:4px;padding:6px 10px;font-size:12px}
+.data-chip .k{color:#777}
+.data-chip .v{font-weight:700;color:#1a1a1a;font-size:14px}
+.data-chip.t2{border-left-color:#c47820}
+.data-chip.t3{border-left-color:#2a9d8f}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+<header>
+<h1>双容水箱模型</h1>
+<div class="sub">二阶自平衡对象 · 上下两级水箱串联 · 三阀可调 · <b>版本 v2.0</b></div>
+</header>
+<div class="panel">
+<div class="panel-title">
+<span>双容水箱工艺模型</span>
+<div class="legend">
+<div class="legend-item"><div class="legend-dot" style="background:#4a90d9"></div>水箱1 h₁</div>
+<div class="legend-item"><div class="legend-dot" style="background:#e8943a"></div>水箱2 h₂</div>
+</div>
+</div>
+<div class="panel-body model-scroll"><canvas class="model" id="modelCanvas"></canvas></div>
+<div class="controls">
+<div class="ctrl-block"><h3>进水阀 Q₀</h3><div class="ctrl-row"><label>开度</label><input type="range" id="u0" min="0" max="100" value="70"><span class="val" id="u0v">70%</span></div></div>
+<div class="ctrl-block t2"><h3>调节阀 Q₁</h3><div class="ctrl-row"><label>开度</label><input type="range" id="u1" min="0" max="100" value="60"><span class="val" id="u1v">60%</span></div></div>
+<div class="ctrl-block t3"><h3>出水阀 Q₂</h3><div class="ctrl-row"><label>开度</label><input type="range" id="u2" min="0" max="100" value="50"><span class="val" id="u2v">50%</span></div></div>
+</div>
+<div class="btn-row">
+<button class="btn btn-run" id="btnRun">开始仿真</button>
+<button class="btn btn-reset" id="btnReset">复位</button>
+</div>
+<div class="data-row">
+<div class="data-chip"><span class="k">水箱1液位 h₁</span><br><span class="v" id="d_h1">30.0%</span></div>
+<div class="data-chip t2"><span class="k">水箱2液位 h₂</span><br><span class="v" id="d_h2">55.0%</span></div>
+<div class="data-chip"><span class="k">进水流量 Q₀</span><br><span class="v" id="d_q0">0.210</span></div>
+<div class="data-chip t2"><span class="k">调节流量 Q₁</span><br><span class="v" id="d_q1">0.148</span></div>
+<div class="data-chip t3"><span class="k">出水流量 Q₂</span><br><span class="v" id="d_q2">0.145</span></div>
+</div>
+</div>
+<div class="panel">
+<div class="panel-title"><span>液位历史曲线</span><span id="simTime" style="font-weight:600;color:#357abd;font-size:12px">t = 0.0 s</span></div>
+<div class="panel-body"><canvas class="chart" id="chartCanvas"></canvas></div>
+</div>
+</div>
+<script>
+if(!CanvasRenderingContext2D.prototype.roundRect){CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){if(typeof r==='number')r=[r,r,r,r];this.beginPath();this.moveTo(x+r[0],y);this.arcTo(x+w,y,x+w,y+h,r[1]);this.arcTo(x+w,y+h,x,y+h,r[2]);this.arcTo(x,y+h,x,y,r[3]);this.arcTo(x,y,x+w,y,r[0]);this.closePath();return this;};}
+
+var modelCanvas=document.getElementById('modelCanvas');
+var chartCanvas=document.getElementById('chartCanvas');
+var mctx=modelCanvas.getContext('2d');
+var cctx=chartCanvas.getContext('2d');
+
+var A1=1.0,A2=1.5,C0=0.3,C1=0.45,C2=0.65,dt=0.05,LAG=2.0;
+
+var h1=0.30,h2=0.55,u0=0.7,u1=0.6,u2=0.5;
+var t=0,running=false;
+var histData=[{t:0,h1:0.30,h2:0.55}];
+var lagSteps=Math.round(LAG/dt), h1Lag=[]; for(var k=0;k<lagSteps+1;k++)h1Lag.push(h1);
+var flowPhase0=0,flowPhase1=0,flowPhase2=0,bubblePhase=0,wavePhase=0;
+
+function setupCanvas(c,ctx){
+  var dpr=window.devicePixelRatio||1;
+  var r=c.getBoundingClientRect();
+  var w=Math.max(r.width,300), h=Math.max(r.height,120);
+  c.width=Math.round(w*dpr);
+  c.height=Math.round(h*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return{w:w,h:h};
+}
+function hexA(hex,a){
+  var c=hex.replace('#','');
+  return'rgba('+parseInt(c.substr(0,2),16)+','+parseInt(c.substr(2,2),16)+','+parseInt(c.substr(4,2),16)+','+a+')';
+}
+function updateData(){
+  var q0=C0*u0;
+  var q1=C1*u1*Math.sqrt(Math.max(h1Lag[0],0));
+  var q2=C2*u2*Math.sqrt(Math.max(h2,0));
+  document.getElementById('d_h1').textContent=(h1*100).toFixed(1)+'%';
+  document.getElementById('d_h2').textContent=(h2*100).toFixed(1)+'%';
+  document.getElementById('d_q0').textContent=q0.toFixed(3);
+  document.getElementById('d_q1').textContent=q1.toFixed(3);
+  document.getElementById('d_q2').textContent=q2.toFixed(3);
+  document.getElementById('simTime').textContent='t = '+t.toFixed(1)+' s';
+}
+
+function drawValve(ctx,cx,cy,open){
+  ctx.save();ctx.translate(cx,cy);
+  ctx.fillStyle='#9bc85a';ctx.strokeStyle='#1a1a1a';ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(-28,-9,16,18,2);ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.roundRect(12,-9,16,18,2);ctx.fill();ctx.stroke();
+  ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(-28,-11);ctx.lineTo(-28,11);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(28,-11);ctx.lineTo(28,11);ctx.stroke();
+  ctx.fillStyle='#9bc85a';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.arc(0,0,15,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#1a1a1a';ctx.beginPath();ctx.arc(0,0,5,0,Math.PI*2);ctx.fill();
+  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,-13);ctx.lineTo(0,-22);ctx.stroke();
+  ctx.fillStyle='#9bc85a';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(-6,-25,12,8,2);ctx.fill();ctx.stroke();
+  var a=open*Math.PI/2;
+  var ex=28*Math.sin(a),ey=-22-28*Math.cos(a);
+  ctx.lineWidth=8;ctx.strokeStyle='#1a1a1a';
+  ctx.beginPath();ctx.moveTo(0,-22);ctx.lineTo(ex,ey);ctx.stroke();
+  ctx.lineWidth=5;ctx.strokeStyle='#9bc85a';
+  ctx.beginPath();ctx.moveTo(0,-22);ctx.lineTo(ex,ey);ctx.stroke();
+  ctx.fillStyle='#9bc85a';ctx.strokeStyle='#1a1a1a';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(ex,ey,4,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.restore();
+}
+
+function drawTank(ctx,x,y,w,h,level,label,color){
+  var waterH=h*level;
+  ctx.strokeStyle='#6b7785';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+h);ctx.lineTo(x+w,y+h);ctx.lineTo(x+w,y);ctx.stroke();
+  if(level>0.01){
+    ctx.fillStyle=hexA(color,0.65);
+    ctx.fillRect(x+2,y+h-waterH,w-4,waterH);
+    ctx.strokeStyle=hexA(color,0.9);ctx.lineWidth=2;
+    ctx.beginPath();
+    for(var i=0;i<=w-4;i+=4){
+      var wy=y+h-waterH+Math.sin((i+wavePhase)*0.15)*2;
+      if(i===0)ctx.moveTo(x+2+i,wy);else ctx.lineTo(x+2+i,wy);
+    }
+    ctx.stroke();
+    ctx.fillStyle=hexA(color,0.35);
+    for(var i=0;i<4;i++){
+      var bx=x+15+(i/3)*(w-30);
+      var by=y+h-8-((bubblePhase+i*25)%Math.max(waterH-12,1));
+      ctx.beginPath();ctx.arc(bx,by,2,0,Math.PI*2);ctx.fill();
+    }
+  }
+  ctx.strokeStyle='#c8ced6';ctx.lineWidth=1;ctx.fillStyle='#9aa5b1';ctx.font='9px sans-serif';ctx.textAlign='right';
+  for(var i=0;i<=4;i++){var ty=y+h*(i/4);ctx.beginPath();ctx.moveTo(x-6,ty);ctx.lineTo(x,ty);ctx.stroke();ctx.fillText((100-i*25)+'',x-8,ty+3);}
+  if(level>0.02){
+    var arrowX=x-32;
+    var topY=y+h-waterH,botY=y+h;
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(arrowX,topY);ctx.lineTo(arrowX,botY);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(arrowX-4,topY+5);ctx.lineTo(arrowX,topY);ctx.lineTo(arrowX+4,topY+5);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(arrowX-4,botY-5);ctx.lineTo(arrowX,botY);ctx.lineTo(arrowX+4,botY-5);ctx.stroke();
+    ctx.fillStyle=color;ctx.font='bold 12px sans-serif';ctx.textAlign='right';
+    ctx.fillText('h'+label,arrowX-6,(topY+botY)/2+4);
+  }
+  ctx.fillStyle='#333';ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+  ctx.fillText('水箱'+label,x+w/2,y-8);
+}
+
+function drawPipe(ctx,x,y,w,h){
+  ctx.fillStyle='#d4dae0';ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='#9aa5b1';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,w-2,h-2);
+}
+function drawBend(ctx,x,y,r,type){
+  ctx.lineWidth=18;ctx.strokeStyle='#d4dae0';ctx.lineCap='round';
+  ctx.beginPath();
+  if(type==='tr'){ctx.moveTo(x,y-r);ctx.arcTo(x,y,x+r,y,r);ctx.lineTo(x+r,y);}
+  if(type==='rb'){ctx.moveTo(x+r,y);ctx.arcTo(x,y,x,y+r,r);ctx.lineTo(x,y+r);}
+  if(type==='bl'){ctx.moveTo(x,y+r);ctx.arcTo(x,y,x-r,y,r);ctx.lineTo(x-r,y);}
+  if(type==='lt'){ctx.moveTo(x-r,y);ctx.arcTo(x,y,x,y-r,r);ctx.lineTo(x,y-r);}
+  ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle='#9aa5b1';
+  ctx.beginPath();
+  if(type==='tr'){ctx.moveTo(x,y-r);ctx.arcTo(x,y,x+r,y,r);ctx.lineTo(x+r,y);}
+  if(type==='rb'){ctx.moveTo(x+r,y);ctx.arcTo(x,y,x,y+r,r);ctx.lineTo(x,y+r);}
+  if(type==='bl'){ctx.moveTo(x,y+r);ctx.arcTo(x,y,x-r,y,r);ctx.lineTo(x-r,y);}
+  if(type==='lt'){ctx.moveTo(x-r,y);ctx.arcTo(x,y,x,y-r,r);ctx.lineTo(x,y-r);}
+  ctx.stroke();
+}
+
+function drawFlow(ctx,pts,phase,color,speed){
+  if(speed<0.01)return;
+  var segs=[];var total=0;
+  for(var i=0;i<pts.length-1;i++){
+    var len=Math.hypot(pts[i+1].x-pts[i].x,pts[i+1].y-pts[i].y);
+    segs.push({x0:pts[i].x,y0:pts[i].y,x1:pts[i+1].x,y1:pts[i+1].y,len:len,acc:total});
+    total+=len;
+  }
+  if(total<1)return;
+  var sp=22;var n=Math.ceil(total/sp)+1;
+  ctx.fillStyle=hexA(color,0.95);
+  for(var i=0;i<n;i++){
+    var d=(i*sp+phase)%total;if(d<0)d+=total;
+    var seg=segs[0];
+    for(var j=0;j<segs.length;j++){if(d<segs[j].acc+segs[j].len){seg=segs[j];break;}}
+    var f=(d-seg.acc)/seg.len;
+    var px=seg.x0+(seg.x1-seg.x0)*f,py=seg.y0+(seg.y1-seg.y0)*f;
+    ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawModel(){
+  var dim=setupCanvas(modelCanvas,mctx);
+  var w=dim.w,h=dim.h;
+  mctx.clearRect(0,0,w,h);
+  var offX=Math.max(0,(w-640)/2);
+  var pipeW=18,bendR=22;
+  var tw=150,th=170;
+  var t1x=70+offX,t1y=80;
+  var t2x=340+offX,t2y=360;
+  var in1={x:t1x,y:120};
+  var out1={x:t1x+tw,y:230};
+  var in2={x:t2x+75,y:t2y};
+  var out2={x:t2x+tw,y:500};
+
+  var q0x0=offX+15;
+  drawPipe(mctx,q0x0,120-pipeW/2,in1.x-q0x0,pipeW);
+  drawPipe(mctx,out1.x,out1.y-pipeW/2,in2.x+bendR-out1.x,pipeW);
+  drawPipe(mctx,in2.x-pipeW/2,out1.y+bendR,pipeW,in2.y-(out1.y+bendR));
+  drawBend(mctx,in2.x,out1.y,bendR,'rb');
+  var q2x1=offX+600;
+  drawPipe(mctx,out2.x,out2.y-pipeW/2,q2x1-out2.x,pipeW);
+
+  drawTank(mctx,t1x,t1y,tw,th,h1,'1','#4a90d9');
+  drawTank(mctx,t2x,t2y,tw,th,h2,'2','#e8943a');
+
+  var q0v=C0*u0;
+  var q1v=C1*u1*Math.sqrt(Math.max(h1,0));
+  var q2v=C2*u2*Math.sqrt(Math.max(h2,0));
+  drawFlow(mctx,[{x:q0x0,y:120},{x:in1.x,y:120}],flowPhase0,'#4a90d9',q0v);
+  drawFlow(mctx,[{x:out1.x,y:out1.y},{x:in2.x+bendR,y:out1.y},{x:in2.x,y:out1.y+bendR},{x:in2.x,y:in2.y}],flowPhase1,'#2bb6a8',q1v);
+  drawFlow(mctx,[{x:out2.x,y:out2.y},{x:q2x1,y:out2.y}],flowPhase2,'#e8943a',q2v);
+
+  drawValve(mctx,(q0x0+in1.x)/2,120,u0);
+  drawValve(mctx,(out1.x+in2.x)/2,out1.y,u1);
+  drawValve(mctx,(out2.x+q2x1)/2,out2.y,u2);
+
+  mctx.fillStyle='#6b7785';mctx.font='11px sans-serif';mctx.textAlign='left';
+  mctx.fillText('水源',q0x0-5,108);
+  mctx.textAlign='center';
+  mctx.fillText('排水',q2x1,out2.y+22);
+  mctx.fillStyle='#357abd';mctx.font='bold 11px sans-serif';mctx.textAlign='center';
+  mctx.fillText('Q₀',(q0x0+in1.x)/2,142);
+  mctx.fillStyle='#2a9d8f';
+  mctx.fillText('Q₁',(out1.x+in2.x)/2,out1.y+22);
+  mctx.fillStyle='#c47820';
+  mctx.fillText('Q₂',(out2.x+q2x1)/2,out2.y+22);
+}
+
+function drawChart(){
+  var dim=setupCanvas(chartCanvas,cctx);
+  var w=dim.w,h=dim.h;
+  cctx.clearRect(0,0,w,h);
+  var padL=44,padR=16,padT=14,padB=26;
+  var cw=w-padL-padR,ch=h-padT-padB;
+  var tMax=Math.max(10, Math.ceil(t/5)*5);
+  cctx.strokeStyle='#eef0f4';cctx.lineWidth=1;cctx.fillStyle='#9aa5b1';cctx.font='10px sans-serif';
+  cctx.textAlign='right';cctx.textBaseline='middle';
+  for(var i=0;i<=4;i++){var yy=padT+ch*(i/4);cctx.beginPath();cctx.moveTo(padL,yy);cctx.lineTo(padL+cw,yy);cctx.stroke();cctx.fillText((100-i*25)+'%',padL-6,yy);}
+  cctx.textAlign='center';cctx.textBaseline='top';
+  var tStep=tMax<=30?5:(tMax<=60?10:(tMax<=120?20:40));
+  for(var tt=0;tt<=tMax;tt+=tStep){var xx=padL+cw*(tt/tMax);cctx.beginPath();cctx.moveTo(xx,padT);cctx.lineTo(xx,padT+ch);cctx.stroke();cctx.fillText(tt+'s',xx,padT+ch+4);}
+  cctx.strokeStyle='#5a6473';cctx.lineWidth=1.5;
+  cctx.beginPath();cctx.moveTo(padL,padT);cctx.lineTo(padL,padT+ch);cctx.lineTo(padL+cw,padT+ch);cctx.stroke();
+  cctx.fillStyle='#555';cctx.font='11px sans-serif';cctx.textAlign='center';
+  cctx.fillText('时间 t (s)',padL+cw/2,padT+ch+16);
+  cctx.save();cctx.translate(12,padT+ch/2);cctx.rotate(-Math.PI/2);cctx.fillText('液位 (%)',0,0);cctx.restore();
+  if(histData.length>=1){
+    var last=histData[histData.length-1];
+    cctx.fillStyle='#4a90d9';cctx.beginPath();cctx.arc(padL+cw*(last.t/tMax),padT+ch*(1-last.h1),3,0,Math.PI*2);cctx.fill();
+    cctx.fillStyle='#e8943a';cctx.beginPath();cctx.arc(padL+cw*(last.t/tMax),padT+ch*(1-last.h2),3,0,Math.PI*2);cctx.fill();
+  }
+  if(histData.length>1){
+    cctx.strokeStyle='#4a90d9';cctx.lineWidth=2;cctx.beginPath();
+    for(var i=0;i<histData.length;i++){var p=histData[i];var xx=padL+cw*(p.t/tMax);var yy=padT+ch*(1-p.h1);if(i===0)cctx.moveTo(xx,yy);else cctx.lineTo(xx,yy);}
+    cctx.stroke();
+    cctx.strokeStyle='#e8943a';cctx.beginPath();
+    for(var i=0;i<histData.length;i++){var p=histData[i];var xx=padL+cw*(p.t/tMax);var yy=padT+ch*(1-p.h2);if(i===0)cctx.moveTo(xx,yy);else cctx.lineTo(xx,yy);}
+    cctx.stroke();
+  }
+}
+
+function step(){
+  var q0=C0*u0;
+  var q1=C1*u1*Math.sqrt(Math.max(h1Lag[0],0));
+  h1Lag.push(h1); if(h1Lag.length>lagSteps+1)h1Lag.shift();
+  var q2=C2*u2*Math.sqrt(Math.max(h2,0));
+  var dh1=(q0-q1)/A1*dt;
+  var dh2=(q1-q2)/A2*dt;
+  h1=Math.max(0,Math.min(1,h1+dh1));
+  h2=Math.max(0,Math.min(1,h2+dh2));
+  t+=dt;
+  flowPhase0+=2+q0*20;
+  flowPhase1+=2+q1*20;
+  flowPhase2+=2+q2*20;
+  bubblePhase+=1.5;wavePhase+=0.5;
+  if(histData.length===0||t-histData[histData.length-1].t>=0.1){
+    histData.push({t:t,h1:h1,h2:h2});
+  }
+  if(histData.length>600)histData.shift();
+  updateData();
+}
+
+var btnRun=document.getElementById('btnRun');
+var btnReset=document.getElementById('btnReset');
+var simTimer=null;
+function tick(){
+  if(!running)return;
+  for(var k=0;k<3;k++)step();   // 每帧固定推进 0.15 虚拟秒，简单可靠，不依赖时钟
+  try{drawModel();drawChart();}catch(e){console.error(e);}
+}
+function startLoop(){
+  if(running && simTimer===null){
+    simTimer=setInterval(tick,50);
+    tick();   // 点击开始立即执行一帧，不依赖定时器首次触发
+  }
+}
+function stopLoop(){
+  if(simTimer!==null){clearInterval(simTimer);simTimer=null;}
+}
+
+btnRun.onclick=function(){
+  running=!running;
+  btnRun.textContent=running?'暂停仿真':'开始仿真';
+  btnRun.classList.toggle('pause',running);
+  if(running)startLoop(); else stopLoop();
+};
+
+btnReset.onclick=function(){
+  h1=0.30;h2=0.55;t=0;
+  histData=[{t:0,h1:0.30,h2:0.55}];
+  h1Lag=[]; for(var k=0;k<lagSteps+1;k++)h1Lag.push(h1);
+  flowPhase0=0;flowPhase1=0;flowPhase2=0;
+  updateData();
+  drawModel();drawChart();
+  running=false;btnRun.textContent='开始仿真';btnRun.classList.remove('pause');
+  stopLoop();
+  drawModel();drawChart();
+};
+
+document.getElementById('u0').oninput=function(e){
+  u0=+e.target.value/100;
+  document.getElementById('u0v').textContent=e.target.value+'%';
+  updateData();drawModel();
+};
+document.getElementById('u1').oninput=function(e){
+  u1=+e.target.value/100;
+  document.getElementById('u1v').textContent=e.target.value+'%';
+  updateData();drawModel();
+};
+document.getElementById('u2').oninput=function(e){
+  u2=+e.target.value/100;
+  document.getElementById('u2v').textContent=e.target.value+'%';
+  updateData();drawModel();
+};
+
+window.addEventListener('resize',function(){drawModel();drawChart();});
+window.addEventListener('load',function(){drawModel();drawChart();});
+
+running=false;
+btnRun.textContent='开始仿真';
+btnRun.classList.remove('pause');
+drawModel();drawChart();
+setTimeout(function(){drawModel();drawChart();},300);
+</script>
+</body>
+</html>
