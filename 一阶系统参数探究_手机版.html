@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一阶系统参数探究 · 手机版</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,Segoe UI,Roboto,'PingFang SC','Microsoft YaHei',sans-serif;background:#eef1f5;color:#222;padding:8px}
+  .wrap{max-width:480px;margin:0 auto}
+  .hdr{background:#fff;border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .hdr h1{font-size:15px;font-weight:600}
+  .hdr .sub{font-size:12px;color:#777;margin-top:2px}
+  .row{background:#fff;border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .row-title{font-size:13px;font-weight:600;color:#333;margin-bottom:8px}
+  /* 第1行 传递函数 */
+  .tf{text-align:center;padding:8px 0;background:#f7f9fc;border-radius:8px}
+  .tf .eq{font-size:18px;display:inline-flex;align-items:center;gap:6px}
+  .tf .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle}
+  .tf .num{border-bottom:1px solid #444;padding:0 6px 2px}
+  .tf .den{padding:2px 6px 0}
+  .tfvals{display:flex;flex-direction:column;gap:3px;margin-top:8px;font-size:12px;color:#555}
+  .tfvals b{color:#333;font-weight:600}
+  /* 第2行 两组参数 横向滚动 */
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+  .groups{display:inline-flex;gap:12px;min-width:100%}
+  .grp{flex:0 0 auto;width:170px;background:#f7f9fc;border-radius:10px;padding:10px}
+  .grp.a h3{font-size:13px;margin-bottom:8px;color:#357abd}
+  .grp.b h3{font-size:13px;margin-bottom:8px;color:#c8781f}
+  .pblock{margin-bottom:10px}
+  .pblock:last-child{margin-bottom:0}
+  .prow{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#555}
+  .prow .sym{font-weight:600;color:#333}
+  .prow input{width:64px;font-size:13px;padding:5px 6px;border:1px solid #ccd;border-radius:6px;text-align:right}
+  .phint{font-size:11px;color:#999;margin-top:2px}
+  /* 第3行 曲线 */
+  .legend{display:flex;gap:14px;font-size:12px;margin-bottom:6px;align-items:center}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .lg-dot{width:14px;height:4px;border-radius:2px;display:inline-block}
+  canvas{width:100%;height:240px;display:block}
+  /* 第2行参数下方的按钮 */
+  .btn-row{display:flex;gap:10px;margin-top:12px}
+  .btn{flex:1;padding:11px 0;font-size:14px;font-weight:600;border:none;border-radius:9px;color:#fff;cursor:pointer}
+  .btn-run{background:#2e9e6b}
+  .btn-run:active{background:#258a5c}
+  .btn-reset{background:#d9534f}
+  .btn-reset:active{background:#c0433f}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>一阶系统参数探究 <span style="font-size:11px;font-weight:400;opacity:.7">手机版 v1.1</span></h1>
+    <div class="sub">一阶惯性 + 纯滞后 (FOPDT) · 两组参数单位阶跃响应对比</div>
+  </div>
+
+  <!-- 第1行 传递函数 -->
+  <div class="row">
+    <div class="row-title">① 传递函数（含三个参数 K, T, τ）</div>
+    <div class="tf">
+      <div class="eq">
+        <span>G(s) =</span>
+        <span class="frac">
+          <span class="num">K · e<sup>−τs</sup></span>
+          <span class="den">T·s + 1</span>
+        </span>
+      </div>
+    </div>
+    <div class="tfvals">
+      <div>参数组 A：<b id="vaK">K=1.00</b> &nbsp; <b id="vaT">T=3.0</b> &nbsp; <b id="vaTau">τ=1.0</b> s</div>
+      <div>参数组 B：<b id="vbK">K=1.00</b> &nbsp; <b id="vbT">T=3.0</b> &nbsp; <b id="vbTau">τ=1.0</b> s</div>
+    </div>
+  </div>
+
+  <!-- 第2行 两组参数 -->
+  <div class="row">
+    <div class="row-title">② 两组可调参数（每组上下排列 · 初始值相同 · 可左右滑动）</div>
+    <div class="scroll">
+      <div class="groups">
+        <div class="grp a">
+          <h3>参数组 A</h3>
+          <div class="pblock">
+            <div class="prow"><span class="sym">K 增益</span><input id="ka" type="number" step="0.1" min="0.1" value="1.0"></div>
+            <div class="phint">稳态输出幅值</div>
+          </div>
+          <div class="pblock">
+            <div class="prow"><span class="sym">T 时间常数</span><input id="ta" type="number" step="0.1" min="0.1" value="3.0"></div>
+            <div class="phint">响应快慢 (s)</div>
+          </div>
+          <div class="pblock">
+            <div class="prow"><span class="sym">τ 纯滞后</span><input id="tauA" type="number" step="0.1" min="0" value="1.0"></div>
+            <div class="phint">延迟时间 (s)</div>
+          </div>
+        </div>
+        <div class="grp b">
+          <h3>参数组 B</h3>
+          <div class="pblock">
+            <div class="prow"><span class="sym">K 增益</span><input id="kb" type="number" step="0.1" min="0.1" value="1.0"></div>
+            <div class="phint">稳态输出幅值</div>
+          </div>
+          <div class="pblock">
+            <div class="prow"><span class="sym">T 时间常数</span><input id="tb" type="number" step="0.1" min="0.1" value="3.0"></div>
+            <div class="phint">响应快慢 (s)</div>
+          </div>
+          <div class="pblock">
+            <div class="prow"><span class="sym">τ 纯滞后</span><input id="tauB" type="number" step="0.1" min="0" value="1.0"></div>
+            <div class="phint">延迟时间 (s)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-run" id="btnRun">开始运行</button>
+      <button class="btn btn-reset" id="btnReset">重置</button>
+    </div>
+  </div>
+
+  <!-- 第3行 曲线 -->
+  <div class="row">
+    <div class="row-title">③ 单位阶跃响应曲线（输入 u=1, t≥0）</div>
+    <div class="legend">
+      <span><i class="lg-dot" style="background:#3a7bd5"></i>组 A</span>
+      <span><i class="lg-dot" style="background:#e8943a"></i>组 B</span>
+      <span style="color:#999">虚线 = 稳态值</span>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+</div>
+<script>
+(function(){
+  var $ = function(id){return document.getElementById(id);};
+  var A = {K:1.0, T:3.0, tau:1.0};
+  var B = {K:1.0, T:3.0, tau:1.0};
+  var running = false;   // 动画是否运行
+
+  function updateRunBtn(){
+    $('btnRun').textContent = running ? '运行中…' : '开始运行';
+  }
+
+  function readParams(){
+    A.K = Math.max(0.05, parseFloat($('ka').value)||1.0);
+    A.T = Math.max(0.1, parseFloat($('ta').value)||3.0);
+    A.tau = Math.max(0, parseFloat($('tauA').value)||1.0);
+    B.K = Math.max(0.05, parseFloat($('kb').value)||1.0);
+    B.T = Math.max(0.1, parseFloat($('tb').value)||3.0);
+    B.tau = Math.max(0, parseFloat($('tauB').value)||1.0);
+    $('vaK').textContent='K='+A.K.toFixed(2);
+    $('vaT').textContent='T='+A.T.toFixed(1);
+    $('vaTau').textContent='τ='+A.tau.toFixed(1);
+    $('vbK').textContent='K='+B.K.toFixed(2);
+    $('vbT').textContent='T='+B.T.toFixed(1);
+    $('vbTau').textContent='τ='+B.tau.toFixed(1);
+  }
+
+  ['ka','ta','tauA','kb','tb','tauB'].forEach(function(id){
+    $(id).addEventListener('input', readParams);
+  });
+
+  $('btnRun').addEventListener('click', function(){
+    vt = 0; running = true; updateRunBtn();
+  });
+  $('btnReset').addEventListener('click', function(){
+    running = false; vt = 0; updateRunBtn();
+  });
+
+  var cv = $('chart');
+  var ctx = cv.getContext('2d');
+  var W=0, H=0, dpr=1, vt=0;
+  function resize(){
+    dpr = window.devicePixelRatio||1;
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W*dpr; cv.height = H*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  function yStep(t,g){
+    return t<=g.tau ? 0 : g.K*(1-Math.exp(-(t-g.tau)/g.T));
+  }
+
+  function draw(){
+    if(W===0) resize();
+    ctx.clearRect(0,0,W,H);
+    var tMax = Math.max(20, Math.ceil(Math.max(5*A.T+A.tau, 5*B.T+B.tau))+3);
+    tMax = Math.ceil(tMax/5)*5;
+    var yMax = Math.max(1.2, Math.max(A.K,B.K)*1.15);
+    yMax = Math.ceil(yMax*10)/10;
+    var pl=42, pr=12, pt=14, pb=26;
+    var pw = W-pl-pr, ph = H-pt-pb;
+    function X(t){return pl + pw*t/tMax;}
+    function Y(v){return pt + ph*(1 - v/yMax);}
+
+    // 网格
+    ctx.lineWidth=1; ctx.font='10px sans-serif';
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    var yDiv=4;
+    for(var i=0;i<=yDiv;i++){
+      var v=yMax*i/yDiv, y=Y(v);
+      ctx.strokeStyle='#e8ebef';
+      ctx.beginPath(); ctx.moveTo(pl,y); ctx.lineTo(pl+pw,y); ctx.stroke();
+      ctx.fillStyle='#9aa0a6'; ctx.fillText(v.toFixed(1), pl-5, y);
+    }
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    var tDiv=5;
+    for(var j=0;j<=tDiv;j++){
+      var t=tMax*j/tDiv, x=X(t);
+      ctx.strokeStyle='#eef0f3';
+      ctx.beginPath(); ctx.moveTo(x,pt); ctx.lineTo(x,pt+ph); ctx.stroke();
+      ctx.fillStyle='#9aa0a6'; ctx.fillText(t.toFixed(0)+'s', x, pt+ph+4);
+    }
+    ctx.fillStyle='#777'; ctx.textAlign='left';
+    ctx.fillText('y', 4, pt-2);
+    ctx.textAlign='right'; ctx.fillText('t', W-2, pt+ph+12);
+
+    // 稳态虚线
+    ctx.setLineDash([4,4]); ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(58,123,213,.45)';
+    ctx.beginPath(); ctx.moveTo(pl,Y(A.K)); ctx.lineTo(pl+pw,Y(A.K)); ctx.stroke();
+    ctx.strokeStyle='rgba(232,148,58,.55)';
+    ctx.beginPath(); ctx.moveTo(pl,Y(B.K)); ctx.lineTo(pl+pw,Y(B.K)); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 动画进度（示波器式描绘，点击“开始运行”后启动）
+    if(running){
+      vt += tMax/240;
+      if(vt>=tMax){ vt=tMax; running=false; updateRunBtn(); }
+    }
+
+    function plot(g,color){
+      var step = tMax/200;
+      // 暗色完整曲线
+      ctx.strokeStyle=color; ctx.globalAlpha=0.25; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      var first=true;
+      for(var t=0;t<=tMax+1e-6;t+=step){
+        var x=X(t), y=Y(yStep(t,g));
+        if(first){ctx.moveTo(x,y);first=false;} else ctx.lineTo(x,y);
+      }
+      ctx.stroke(); ctx.globalAlpha=1;
+      // 已描绘部分（到 vt）
+      ctx.strokeStyle=color; ctx.lineWidth=2.4;
+      ctx.beginPath(); first=true;
+      var lx=0, ly=0;
+      for(var t2=0;t2<=vt+1e-6;t2+=step){
+        var x2=X(t2), y2=Y(yStep(t2,g));
+        if(first){ctx.moveTo(x2,y2);first=false;} else ctx.lineTo(x2,y2);
+        lx=x2; ly=y2;
+      }
+      ctx.stroke();
+      ctx.fillStyle=color; ctx.beginPath(); ctx.arc(lx,ly,3.5,0,7); ctx.fill();
+    }
+    plot(A,'#3a7bd5');
+    plot(B,'#e8943a');
+  }
+
+  function loop(){ draw(); requestAnimationFrame(loop); }
+  readParams(); resize(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
