@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电-气转换器工作原理 · 交互版</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,Segoe UI,Roboto,'PingFang SC','Microsoft YaHei',sans-serif;background:#eef1f5;color:#222;padding:8px}
+.wrap{max-width:520px;margin:0 auto}
+.hdr{background:#fff;border-radius:12px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hdr h1{font-size:15px;font-weight:600}
+.hdr .sub{font-size:12px;color:#777;margin-top:2px}
+.row{background:#fff;border-radius:12px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.row-title{font-size:13px;font-weight:600;color:#333;margin-bottom:8px}
+.tf{text-align:center;padding:8px 0;background:#f7f9fc;border-radius:8px}
+.tf .eq{font-size:16px;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center}
+.tf .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle}
+.tf .num{border-bottom:1px solid #444;padding:0 5px 1px}
+.tf .den{padding:1px 5px 0}
+.range-hint{font-size:11px;color:#666;margin-top:6px}
+canvas{width:100%;height:auto;display:block;background:#f7f9fc;border-radius:8px}
+.slider-row{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px}
+.slider-row input[type=range]{flex:1}
+.slider-row span{min-width:68px;text-align:right;font-weight:600;color:#185fa5}
+.metrics{display:flex;gap:8px;margin-top:10px;font-size:12px;color:#555}
+.metrics>div{flex:1;background:#f7f9fc;border-radius:8px;padding:8px 10px;text-align:center}
+.metrics b{display:block;font-size:15px;color:#222;margin-bottom:2px}
+.legend{font-size:11px;color:#777;margin-top:6px;text-align:center}
+.btn-row{display:flex;gap:10px;margin-top:12px}
+.btn{flex:1;padding:11px 0;font-size:14px;font-weight:600;border:none;border-radius:9px;color:#fff;cursor:pointer}
+.btn-run{background:#2e9e6b}.btn-run:active{background:#258a5c}
+.btn-reset{background:#d9534f}.btn-reset:active{background:#c0433f}
+.note{font-size:11px;color:#888;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>电-气转换器工作原理 <span style="font-size:11px;font-weight:400;opacity:.7">交互版 v2.11</span></h1>
+    <div class="sub">拖动电流滑块，观察力平衡过程 — 杠杆绕十字簧片支承转动，弹簧与波纹管随杠杆伸缩</div>
+  </div>
+
+  <div class="row">
+    <div class="row-title">① 电流-气压转换关系</div>
+    <div class="tf">
+      <div class="eq">
+        <span>P<sub>出</sub> = 0.02 + 0.08 &times;</span>
+        <span class="frac"><span class="num">I &minus; 4</span><span class="den">20 &minus; 4</span></span>
+        <span>(MPa)</span>
+      </div>
+      <div class="range-hint">4 mA &rarr; 0.02 MPa（挡板远离喷嘴）&nbsp;&nbsp;20 mA &rarr; 0.10 MPa（挡板靠近喷嘴）</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="row-title">② 拖动滑块，观察力平衡过程</div>
+    <canvas id="cvs" width="420" height="380"></canvas>
+    <div class="legend">
+      <span style="color:#185fa5">&#9679;</span> 主供气/输出(Pi&rarr;Po)
+      &nbsp;&nbsp;<span style="color:#5f5e5a">&#9679;</span> 喷嘴背压先导回路
+      &nbsp;&nbsp;<span style="color:#7f77dd">&#9679;</span> 反馈气路(&rarr;波纹管)
+    </div>
+    <div class="slider-row">
+      <span>输入电流 I</span>
+      <input type="range" id="rangeI" min="4" max="20" step="0.1" value="4">
+      <span id="valI">4.0 mA</span>
+    </div>
+    <div class="metrics">
+      <div>输出气压<b id="valP" style="color:#2e9e6b">0.020</b><small>MPa</small></div>
+      <div>挡板间隙<b id="valGap">100%</b></div>
+      <div>杠杆转角<b id="valAng">0.0&deg;</b></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-run" id="btnRun">自动扫描</button>
+      <button class="btn btn-reset" id="btnReset">重置</button>
+    </div>
+    <div class="note"><b>工作原理：</b>电流增大 &rarr; 线圈电磁力增大 &rarr; 杠杆右端受力上翘、左端下压 &rarr; 挡板靠近喷嘴 &rarr; 喷嘴背压升高 &rarr; 放大器输出气压升高；输出压力同步馈入反馈波纹管产生反向力矩，最终与电磁力矩平衡。调零弹簧和两波纹管底端固定在横杆上，随杠杆偏转做伸缩；已再次缩短约1/3（累计接近一半）、横杆向上平移；气源小球流动已大幅减弱至几乎静止。</div>
+  </div>
+
+  <div class="row">
+    <div class="row-title">③ 静态特性曲线（当前工作点）</div>
+    <canvas id="cvsCurve" width="420" height="240"></canvas>
+    <div class="legend">红线：理想线性特性 &nbsp;&#9679; 当前工作点</div>
+  </div>
+</div>
+
+<script>
+(function(){
+var cvs=document.getElementById('cvs'),ctx=cvs.getContext('2d');
+var cvsC=document.getElementById('cvsCurve'),ctxC=cvsC.getContext('2d');
+var rangeI=document.getElementById('rangeI'),valI=document.getElementById('valI');
+var valP=document.getElementById('valP'),valGap=document.getElementById('valGap'),valAng=document.getElementById('valAng');
+var btnRun=document.getElementById('btnRun'),btnReset=document.getElementById('btnReset');
+
+var W=420,H=380,CW=420,CH=240;
+
+// 几何参数 —— 以原图布局为基准
+var pivot={x:210,y:140};          // 十字簧片支承位置（中心）
+var leverHalfLen=165;              // 杠杆半长
+var baseBarY=205;                  // 淡紫横杆 Y坐标（水平固定，再次上移后弹簧/波纹管再缩短约1/3、累计接近一半，底端仍固定其上）
+var maxAngle=0.09;                 // 最大转角 rad (~5°)
+
+// 部件在杠杆上的 X 坐标（相对于 pivot）
+var partX={
+  flapper:pivot.x-145,            // 挡板
+  spring:pivot.x-100,             // 调零弹簧
+  bellowsNeg:pivot.x-55,          // 负反馈波纹管
+  bellowsPos:pivot.x+50,          // 正反馈波纹管
+  magnet:pivot.x+115,             // 磁钢
+  core:pivot.x+138,               // 铁芯
+  coil:pivot.x+162                // 测量线圈
+};
+
+function I2r(I){return(I-4)/16}
+function I2P(I){return 0.02+0.08*I2r(I)}
+function rad2deg(r){return(r*180/Math.PI).toFixed(1)}
+
+// 计算杠杆两端位置
+function leverEnds(theta){
+ var c=Math.cos(theta),s=Math.sin(theta);
+ return{
+   left:{x:pivot.x-leverHalfLen*c,y:pivot.y-leverHalfLen*s},
+   right:{x:pivot.x+leverHalfLen*c,y:pivot.y+leverHalfLen*s},
+   theta:theta
+ };
+}
+
+// 计算杠杆上某 x 处的 y 坐标
+function leverYatX(x,theta){
+ return pivot.y+(x-pivot.x)*Math.tan(theta);
+}
+
+// ========== 绘图函数 ==========
+
+// 绘制调零弹簧（垂直，顶端随杠杆动，底端固定在横杆）
+function drawSpring(cx,topY,bottomY,w,coils){
+ ctx.beginPath();
+ var step=(bottomY-topY)/coils;
+ ctx.moveTo(cx,topY);
+ for(var i=0;i<coils;i++){
+   var y=topY+step*(i+0.5);
+   ctx.lineTo(cx-w/2,y-step*0.28);
+   ctx.lineTo(cx+w/2,y+step*0.28);
+ }
+ ctx.lineTo(cx,bottomY);
+ ctx.strokeStyle='#e09030';
+ ctx.lineWidth=2.5;
+ ctx.stroke();
+}
+
+// 绘制波纹管（褶皱锯齿状，顶端随杠杆动，底端固定在横杆）
+function drawBellows(cx,topY,bottomY,w,colorFill,colorStroke){
+ var h=bottomY-topY;
+ var n=5;
+ var seg=h/n;
+ // 锯齿外形
+ ctx.beginPath();
+ ctx.moveTo(cx-w/2,topY);
+ for(var i=0;i<n;i++){
+   var y0=topY+i*seg;
+   // 左锯齿
+   ctx.lineTo(cx-w*0.85,y0+seg*0.22);
+   ctx.lineTo(cx-w/2,y0+seg*0.5);
+   // 右锯齿
+   ctx.lineTo(cx+w*0.85,y0+seg*0.78);
+   ctx.lineTo(cx+w/2,y0+seg);
+ }
+ // 右侧下行
+ for(var i=n-1;i>=0;i--){
+   var y0=topY+i*seg;
+   ctx.lineTo(cx+w*0.85,y0+seg*0.78);
+   ctx.lineTo(cx+w/2,y0+seg*0.5);
+   ctx.lineTo(cx-w*0.85,y0+seg*0.22);
+ }
+ ctx.closePath();
+ ctx.fillStyle=colorFill;
+ ctx.fill();
+ ctx.strokeStyle=colorStroke;
+ ctx.lineWidth=1.2;
+ ctx.stroke();
+ // 内部竖线纹理
+ ctx.strokeStyle=colorStroke;
+ ctx.globalAlpha=0.45;
+ ctx.lineWidth=0.7;
+ for(var k=1;k<4;k++){
+   var ox=(k/4-0.5)*w*0.6;
+   ctx.beginPath();ctx.moveTo(cx+ox,topY+3);ctx.lineTo(cx+ox,bottomY-3);ctx.stroke();
+ }
+ ctx.globalAlpha=1;
+ // 向上箭头（推力方向）
+ var arrY=topY+14;
+ ctx.beginPath();ctx.moveTo(cx,arrY+8);ctx.lineTo(cx-5,arrY);ctx.lineTo(cx+5,arrY);ctx.closePath();
+ ctx.fillStyle=colorStroke;ctx.fill();
+}
+
+// 绘制测量线圈组件
+function drawCoilAssembly(cx,cy){
+ // 磁钢外框
+ ctx.fillStyle='#80c080';ctx.strokeStyle='#408040';ctx.lineWidth=1.2;
+ ctx.fillRect(cx-18,cy-24,36,48);ctx.strokeRect(cx-18,cy-24,36,48);
+ // 铁芯
+ ctx.fillStyle='#e0a0a0';ctx.strokeStyle='#a06060';ctx.lineWidth=1;
+ ctx.fillRect(cx-6,cy-24,12,48);ctx.strokeRect(cx-6,cy-24,12,48);
+ // 线圈绕组
+ ctx.fillStyle='#9090d0';ctx.strokeStyle='#6060a0';ctx.lineWidth=1;
+ ctx.fillRect(cx-16,cy-20,12,40);ctx.strokeRect(cx-16,cy-20,12,40);
+ ctx.fillRect(cx+4,cy-20,12,40);ctx.strokeRect(cx+4,cy-20,12,40);
+ // 绕组线
+ ctx.strokeStyle='#5050a0';ctx.lineWidth=0.7;
+ for(var i=0;i<=8;i++){
+   var yy=cy-20+40*i/8;
+   ctx.beginPath();ctx.moveTo(cx-16,yy);ctx.lineTo(cx-4,yy);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(cx+4,yy);ctx.lineTo(cx+16,yy);ctx.stroke();
+ }
+ // 引线端子
+ ctx.strokeStyle='#6090d0';ctx.lineWidth=1.5;
+ ctx.beginPath();ctx.arc(cx-10,cy-30,3,0,Math.PI*2);ctx.stroke();
+ ctx.beginPath();ctx.arc(cx+2,cy-30,3,0,Math.PI*2);ctx.stroke();
+}
+
+// ===== 气流动画辅助函数 =====
+function drawPath(pts){
+ ctx.beginPath();
+ ctx.moveTo(pts[0][0],pts[0][1]);
+ for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);
+ ctx.stroke();
+}
+function pathLen(pts){
+ var L=0;
+ for(var i=1;i<pts.length;i++){var dx=pts[i][0]-pts[i-1][0],dy=pts[i][1]-pts[i-1][1];L+=Math.sqrt(dx*dx+dy*dy);}
+ return L;
+}
+function pointAt(pts,u){
+ for(var i=1;i<pts.length;i++){
+   var dx=pts[i][0]-pts[i-1][0],dy=pts[i][1]-pts[i-1][1];
+   var seg=Math.sqrt(dx*dx+dy*dy);
+   if(u<=seg){var f=u/seg;return{x:pts[i-1][0]+dx*f,y:pts[i-1][1]+dy*f};}
+   u-=seg;
+ }
+ var lst=pts[pts.length-1];return{x:lst[0],y:lst[1]};
+}
+var GAS_SPEED=0.05;   // 气源小球基础流速(路径单位/ms)：与气泡间距解耦，越小越慢（v2.6修复"越调越小越快"的频闪bug）
+function flowBubbles(pts,color,speed,density,t){
+ var L=pathLen(pts);if(L<=0)return;
+ var spacing=22;                       // 气泡固定间距(路径单位)，与流速无关 → 不再随系数变小而变密
+ // 相位 t 由 animate 每帧按"速度×dt"累加(单调增) → off 直接取模，方向恒定，与电流增减无关
+ var off=((t%spacing)+spacing)%spacing;
+ ctx.fillStyle=color;
+ for(var d=off;d<L;d+=spacing){var p=pointAt(pts,d);ctx.beginPath();ctx.arc(p.x,p.y,2.2,0,Math.PI*2);ctx.fill();}
+}
+function flowBase(pts,color){
+ ctx.strokeStyle=color;ctx.lineWidth=3;drawPath(pts);
+}
+
+// ========== 主绘图 ==========
+function drawSchematic(I){
+ ctx.clearRect(0,0,W,H);
+ var r=I2r(I);
+ // theta > 0 when I high => right end goes UP (coil pulled up), left end goes DOWN (flap closes nozzle)
+ var theta=maxAngle*(r-0.5);
+ var le=leverEnds(theta);
+
+ // 背景
+ ctx.fillStyle='#f7f9fc';ctx.fillRect(0,0,W,H);
+
+ // ===== 固定构件 =====
+
+ // 1) 淡紫色横杆（底座，水平固定）
+ ctx.fillStyle='#a090d0';ctx.strokeStyle='#7060a0';ctx.lineWidth=1.2;
+ ctx.fillRect(42,baseBarY,340,10);ctx.strokeRect(42,baseBarY,340,10);
+ ctx.fillStyle='#7060a0';ctx.font='10px sans-serif';ctx.textAlign='center';
+ ctx.fillText('底座横杆',212,baseBarY+24);
+
+ // 2) 喷嘴（固定在下方）
+ var nzX=partX.flapper,nzTopY=180,nzH=20,nzW=12;
+ ctx.fillStyle='#80b0e0';ctx.strokeStyle='#4080a0';ctx.lineWidth=1.5;
+ ctx.beginPath();ctx.moveTo(nzX-nzW/2-4,nzTopY);ctx.lineTo(nzX-nzW/2+2,nzTopY+nzH);
+ ctx.lineTo(nzX+nzW/2-2,nzTopY+nzH);ctx.lineTo(nzX+nzW/2+4,nzTopY);ctx.closePath();
+ ctx.fill();ctx.stroke();
+ // 喷嘴内部压力颜色
+ var hue=180-r*120;
+ ctx.fillStyle='hsl('+hue+',65%,'+(68+r*12)+'%)';
+ ctx.fillRect(nzX-nzW/2+1,nzTopY+2,nzW-2,nzH-4);
+ ctx.fillStyle='#4080a0';ctx.font='10px sans-serif';ctx.textAlign='center';
+ ctx.fillText('喷嘴',nzX,nzTopY+nzH+14);
+
+ // 3) 十字簧片支承（固定，杠杆支点）
+ ctx.strokeStyle='#999';ctx.lineWidth=2.5;
+ ctx.beginPath();ctx.moveTo(pivot.x-10,pivot.y);ctx.lineTo(pivot.x+10,pivot.y);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(pivot.x,pivot.y-10);ctx.lineTo(pivot.x,pivot.y+10);ctx.stroke();
+ ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.textAlign='center';
+ ctx.fillText('十字簧片',pivot.x,pivot.y-16);
+ ctx.fillStyle='#777';ctx.font='9px sans-serif';
+ ctx.fillText('支承',pivot.x,pivot.y+22);
+ ctx.fillText('(支点)',pivot.x,pivot.y+34);
+
+ // 4) 气动功率放大器
+ var ampX=nzX,ampY=298;   // 放大器+Pi管道+背压管整体右移，与喷嘴(nzX)同竖直线（v2.10）
+ ctx.fillStyle='#fff';ctx.strokeStyle='#bbb';ctx.lineWidth=1.5;
+ ctx.fillRect(ampX-22,ampY-22,44,44);ctx.strokeRect(ampX-22,ampY-22,44,44);
+ ctx.strokeStyle='#3080c0';ctx.lineWidth=2.5;
+ ctx.beginPath();ctx.moveTo(ampX-9,ampY+10);ctx.lineTo(ampX,ampY-10);ctx.lineTo(ampX+9,ampY+10);ctx.closePath();ctx.stroke();
+ ctx.fillStyle='#555';ctx.font='10px sans-serif';ctx.textAlign='center';
+ ctx.fillText('放大器',ampX,ampY+34);
+
+ // 5) 测量线圈组件（右侧固定框架位置，但视觉上随杠杆联动）
+ var coilRightX=partX.coil;
+ drawCoilAssembly(coilRightX,le.right.y-4);
+ ctx.fillStyle='#6060a0';ctx.font='10px sans-serif';ctx.textAlign='center';
+ ctx.fillText('测量线圈',coilRightX,le.right.y+38);
+
+ // ===== 杠杆及随动部件 =====
+
+ // 杠杆主体（绕 pivot 旋转）
+ ctx.save();
+ ctx.translate(pivot.x,pivot.y);
+ ctx.rotate(theta);
+ ctx.fillStyle='#c9a66b';ctx.strokeStyle='#8b5a2b';ctx.lineWidth=1.5;
+ ctx.fillRect(-leverHalfLen,-6,leverHalfLen*2,12);ctx.strokeRect(-leverHalfLen,-6,leverHalfLen*2,12);
+ ctx.restore();
+
+ // 杠杆标签
+ ctx.fillStyle='#8b5a2b';ctx.font='11px sans-serif';ctx.textAlign='left';
+ ctx.fillText('杠杆',pivot.x+12,pivot.y+4);
+
+ // --- 挡板（附着于杠杆下边沿） ---
+ var flapX=partX.flapper;
+ var flapTopY=leverYatX(flapX,theta)+6;  // 杠杆下边缘
+ // 挡板臂
+ ctx.strokeStyle='#333';ctx.lineWidth=2.5;
+ ctx.beginPath();ctx.moveTo(flapX,flapTopY);ctx.lineTo(flapX,flapTopY+18);ctx.stroke();
+ // 挡板本体
+ ctx.fillStyle='#f0a0a0';ctx.strokeStyle='#c06060';ctx.lineWidth=1;
+ ctx.fillRect(flapX-9,flapTopY+14,18,8);ctx.strokeRect(flapX-9,flapTopY+14,18,8);
+ ctx.fillStyle='#c06060';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('挡板',flapX,flapTopY+10);
+
+ // --- 调零弹簧（垂直，顶随杠杆，底固定横杆） ---
+ var spX=partX.spring;
+ var spTopY=leverYatX(spX,theta)+6;
+ drawSpring(spX,spTopY,baseBarY-1,14,7);
+ ctx.fillStyle='#e09030';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('调零弹簧',spX,baseBarY+18);
+
+ // --- 负反馈波纹管 ---
+ var bnX=partX.bellowsNeg;
+ var bnTopY=leverYatX(bnX,theta)+6;
+ drawBellows(bnX,bnTopY,baseBarY-1,36,'#b0a0d8','#7060a0');
+ ctx.fillStyle='#7060a0';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('负反馈波纹管',bnX,baseBarY+18);
+
+ // --- 正反馈波纹管 ---
+ var bpX=partX.bellowsPos;
+ var bpTopY=leverYatX(bpX,theta)+6;
+ drawBellows(bpX,bpTopY,baseBarY-1,36,'#d8c0a0','#a07840');
+ ctx.fillStyle='#a07840';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('正反馈波纹管',bpX,baseBarY+18);
+
+ // ===== 力箭头 =====
+
+ // 电磁力箭头（右侧，推动杠杆）
+ if(r>0.35){
+   var fa=r>0.35?Math.min((r-0.35)/0.5,1):0;
+   ctx.globalAlpha=fa;
+   ctx.strokeStyle='#a33';ctx.fillStyle='#a33';ctx.lineWidth=2.2;
+   ctx.beginPath();ctx.moveTo(le.right.x,le.right.y-12);ctx.lineTo(le.right.x,le.right.y-32);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(le.right.x-5,le.right.y-26);ctx.lineTo(le.right.x,le.right.y-32);ctx.lineTo(le.right.x+5,le.right.y-26);ctx.closePath();ctx.fill();
+   ctx.fillStyle='#a33';ctx.font='10px sans-serif';ctx.textAlign='left';
+   ctx.fillText('F电磁',le.right.x+10,le.right.y-26);
+   ctx.globalAlpha=1;
+ }
+
+ // 反馈力箭头（波纹管向上推）
+ if(r>0.3){
+   var fb=Math.min((r-0.3)/0.6,1);
+   ctx.globalAlpha=fb;
+   ctx.strokeStyle='#2e9e6b';ctx.fillStyle='#2e9e6b';ctx.lineWidth=2;
+   ctx.beginPath();ctx.moveTo(bnX,bnTopY+20);ctx.lineTo(bnX,bnTopY+4);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(bnX-4,bnTopY+9);ctx.lineTo(bnX,bnTopY+4);ctx.lineTo(bnX+4,bnTopY+9);ctx.closePath();ctx.fill();
+   ctx.fillStyle='#2e9e6b';ctx.font='9px sans-serif';
+   ctx.fillText('F反馈',bnX+8,bnTopY+14);
+   ctx.globalAlpha=1;
+ }
+
+ // ===== 挡板-喷嘴间隙标注 =====
+ var gapY1=flapTopY+22,gapY2=nzTopY;
+ if(gapY2>gapY1){
+   ctx.strokeStyle='#e09030';ctx.lineWidth=0.8;ctx.setLineDash([3,2]);
+   ctx.beginPath();ctx.moveTo(flapX+14,gapY1);ctx.lineTo(flapX+14,gapY2);ctx.stroke();
+   ctx.setLineDash([]);
+   ctx.fillStyle='#e09030';ctx.font='9px sans-serif';ctx.textAlign='left';
+   ctx.fillText('间隙↓',flapX+17,(gapY1+gapY2)/2+3);
+ }
+
+ // ===== 气路连线 =====
+ var t=state.t;
+
+ // Pi 输入：管道(双竖线管壁) + 管内向上流动的小球（气体从下方进入放大器）
+ ctx.strokeStyle='#c0392b';ctx.fillStyle='#c0392b';ctx.lineWidth=2;
+ ctx.beginPath();ctx.moveTo(ampX-3,ampY+22);ctx.lineTo(ampX-3,ampY+62);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(ampX+3,ampY+22);ctx.lineTo(ampX+3,ampY+62);ctx.stroke();
+ flowBubbles([[ampX,ampY+62],[ampX,ampY+22]], '#c0392b', 0.04+0.2*r, 1.2, state.phases.pi);
+ // 顶部(进入放大器处)向上小箭头
+ ctx.lineWidth=2.5;
+ ctx.beginPath();ctx.moveTo(ampX,ampY+62);ctx.lineTo(ampX,ampY+22);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(ampX-5,ampY+27);ctx.lineTo(ampX,ampY+22);ctx.lineTo(ampX+5,ampY+27);ctx.closePath();ctx.fill();
+ ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('Pi',ampX,ampY+78);
+
+ // 红虚线：放大器→喷嘴背压（被挡板遮挡）
+ var backPath=[[ampX,ampY-22],[ampX,nzTopY+nzH/2],[nzX,nzTopY+nzH/2],[nzX,nzTopY]];
+ flowBase(backPath,'rgba(192,57,43,0.25)');
+ ctx.setLineDash([5,3]);ctx.strokeStyle='rgba(192,57,43,0.5)';ctx.lineWidth=1.5;drawPath(backPath);ctx.setLineDash([]);
+ flowBubbles(backPath,'#c0392b',0.04+0.2*r,0.4+1.0*r,state.phases.back);
+ ctx.fillStyle='#c0392b';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('背压',ampX+30,ampY-28);
+
+ // 绿实线：放大器→负反馈波纹管
+ var negPath=[[ampX+22,ampY],[bnX,ampY],[bnX,baseBarY+5],[bnX,baseBarY-1]];
+ flowBase(negPath,'rgba(46,158,107,0.22)');
+ flowBubbles(negPath,'#2e9e6b',0.04+0.2*r,0.5+1.0*r,state.phases.neg);
+ ctx.fillStyle='#2e9e6b';ctx.font='9px sans-serif';ctx.textAlign='center';
+ ctx.fillText('至负反馈',(ampX+70+bnX)/2,ampY-6);
+
+ // 绿实线：放大器→正反馈波纹管
+ var posPath=[[bnX,ampY],[bpX,ampY],[bpX,baseBarY+5],[bpX,baseBarY-1]];
+ flowBase(posPath,'rgba(46,158,107,0.18)');
+ flowBubbles(posPath,'#2e9e6b',0.04+0.2*r,0.4+0.8*r,state.phases.pos);
+ ctx.fillStyle='#2e9e6b';ctx.font='9px sans-serif';
+ ctx.fillText('至正反馈',(ampX+130+bpX)/2,ampY-6);
+
+ // Po 输出（红色箭头向下）
+ var outX=bpX;   // 输出箭头平移到正对着右边(正反馈)波纹管
+ ctx.strokeStyle='#c0392b';ctx.fillStyle='#c0392b';
+ // 上半段：管道(双竖线管壁) + 管内向下流动的小球
+ ctx.lineWidth=2;
+ ctx.beginPath();ctx.moveTo(outX-3,ampY);ctx.lineTo(outX-3,ampY+24);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(outX+3,ampY);ctx.lineTo(outX+3,ampY+24);ctx.stroke();
+ flowBubbles([[outX,ampY],[outX,ampY+24]], '#c0392b', 0.04+0.2*r, 1.2, state.phases.po);
+ // 下半段：向下箭头(缩短)
+ ctx.lineWidth=2.5;
+ ctx.beginPath();ctx.moveTo(outX,ampY+24);ctx.lineTo(outX,ampY+32);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(outX-5,ampY+27);ctx.lineTo(outX,ampY+32);ctx.lineTo(outX+5,ampY+27);ctx.closePath();ctx.fill();
+ ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillStyle='#c0392b';ctx.fillText('Po',outX,ampY+48);
+ ctx.font='9px sans-serif';ctx.fillStyle='#888';
+ ctx.fillText('0.02~0.1MPa',outX,ampY+60);
+
+// 版本水印（画布右下角，用于确认是否加载了最新版）
+ctx.fillStyle='rgba(100,100,100,0.35)';ctx.font='10px sans-serif';ctx.textAlign='right';
+ctx.fillText('v2.11',418,378);
+
+// 更新数值显示
+valI.textContent=I.toFixed(1)+' mA';
+ valP.textContent=I2P(I).toFixed(3);
+ valGap.textContent=Math.round((1-r)*100)+'%';
+ valAng.textContent=rad2deg(Math.abs(theta))+'°';
+}
+
+// ========== 特性曲线 ==========
+function drawCurve(I){
+ ctxC.clearRect(0,0,CW,CH);
+ var pad={l:46,r:18,t:18,b:38};
+ var Wc=CW-pad.l-pad.r,Hc=CH-pad.t-pad.b;
+ var Imin=4,Imax=20,Pmin=0,Pmax=0.14;
+
+ // 网格
+ ctxC.strokeStyle='#e8e8e8';ctxC.lineWidth=1;
+ for(var i=0;i<=4;i++){
+   var y=pad.t+Hc*i/4;
+   ctxC.beginPath();ctxC.moveTo(pad.l,y);ctxC.lineTo(pad.l+Wc,y);ctx.stroke();
+   var x=pad.l+Wc*i/4;
+   ctxC.beginPath();ctxC.moveTo(x,pad.t);ctxC.lineTo(x,pad.t+Hc);ctx.stroke();
+ }
+
+ // 坐标轴
+ ctxC.strokeStyle='#444';ctxC.lineWidth=1.5;
+ ctxC.beginPath();ctxC.moveTo(pad.l,pad.t);ctxC.lineTo(pad.l,pad.t+Hc);ctxC.lineTo(pad.l+Wc,pad.t+Hc);ctxC.stroke();
+
+ // 刻度标签
+ ctxC.fillStyle='#555';ctxC.font='10px sans-serif';ctxC.textAlign='center';
+ for(var i=0;i<=4;i++){
+   var Iv=Imin+(Imax-Imin)*i/4,x=pad.l+Wc*i/4;
+   ctxC.fillText(Iv.toFixed(0),x,pad.t+Hc+15);
+ }
+ ctxC.fillText('输入电流 I (mA)',pad.l+Wc/2,CH-3);
+ ctxC.save();ctxC.translate(14,pad.t+Hc/2);ctxC.rotate(-Math.PI/2);ctxC.textAlign='center';
+ ctxC.fillText('输出气压 P (MPa)',0,0);ctxC.restore();
+ ctxC.textAlign='right';
+ for(var i=0;i<=4;i++){
+   var Pv=Pmin+(Pmax-Pmin)*(1-i/4),y=pad.t+Hc*i/4;
+   ctxC.fillText(Pv.toFixed(2),pad.l-5,y+4);
+ }
+
+ // 特性曲线
+ ctxC.strokeStyle='#d9534f';ctxC.lineWidth=2.5;
+ var x1=pad.l+Wc*(4-Imin)/(Imax-Imin),y1=pad.t+Hc*(1-(0.02-Pmin)/(Pmax-Pmin));
+ var x2=pad.l+Wc*(20-Imin)/(Imax-Imin),y2=pad.t+Hc*(1-(0.10-Pmin)/(Pmax-Pmin));
+ ctxC.beginPath();ctxC.moveTo(x1,y1);ctxC.lineTo(x2,y2);ctxC.stroke();
+
+ // 工作点
+ var P=I2P(I);
+ var px=pad.l+Wc*(I-Imin)/(Imax-Imin),py=pad.t+Hc*(1-(P-Pmin)/(Pmax-Pmin));
+ ctxC.fillStyle='#185fa5';ctxC.beginPath();ctxC.arc(px,py,5,0,Math.PI*2);ctxC.fill();
+ ctxC.strokeStyle='#fff';ctxC.lineWidth=2;ctxC.beginPath();ctxC.arc(px,py,5,0,Math.PI*2);ctxC.stroke();
+
+ // 虚线到轴
+ ctxC.setLineDash([4,3]);ctxC.strokeStyle='#999';ctxC.lineWidth=1;
+ ctxC.beginPath();ctxC.moveTo(px,py);ctxC.lineTo(px,pad.t+Hc);ctxC.stroke();
+ ctxC.beginPath();ctxC.moveTo(px,py);ctxC.lineTo(pad.l,py);ctxC.stroke();
+ ctxC.setLineDash([]);
+}
+
+// ========== 动画循环 ==========
+var state={I:4.0,t:0,scanning:false,dir:1,phases:{back:0,neg:0,pos:0,po:0,pi:0}},lastTs=0;
+
+function setI(v){state.I=parseFloat(v)}
+
+rangeI.addEventListener('input',function(){
+ if(state.scanning)stopScan();
+ setI(rangeI.value);
+});
+
+function stopScan(){state.scanning=false;btnRun.textContent='自动扫描'}
+
+btnRun.addEventListener('click',function(){
+ if(state.scanning){stopScan();return;}
+ state.scanning=true;btnRun.textContent='停止扫描';
+});
+
+btnReset.addEventListener('click',function(){
+ stopScan();rangeI.value='4';setI(4);
+});
+
+function animate(ts){
+ if(!lastTs)lastTs=ts;
+ var dt=ts-lastTs;lastTs=ts;
+ state.t+=dt;
+ // 各气路流动相位按"基础流速×信号因子×dt"逐帧累加：dt>0、流速>0 → 相位永远单调增 → 流动方向恒定(不随电流增减反向)
+ var _r=(state.I-4)/16;
+ state.phases.back+=(GAS_SPEED*(0.04+0.2*_r))*dt;
+ state.phases.neg +=(GAS_SPEED*(0.04+0.2*_r))*dt;
+ state.phases.pos +=(GAS_SPEED*(0.04+0.2*_r))*dt;
+ state.phases.po  +=(GAS_SPEED*(0.04+0.2*_r))*dt;
+ state.phases.pi  +=(GAS_SPEED*(0.04+0.2*_r))*dt;
+ if(state.scanning){
+   var spd=0.004,I=state.I+state.dir*spd*dt;
+   if(I>=20){I=20;state.dir=-1;}
+   if(I<=4){I=4;state.dir=1;}
+   rangeI.value=I.toFixed(1);state.I=I;
+ }
+ drawSchematic(state.I);
+ drawCurve(state.I);
+ requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
