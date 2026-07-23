@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>气动调节阀探究 · 气开 vs 气关</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,Segoe UI,Roboto,'PingFang SC','Microsoft YaHei',sans-serif;background:#eef1f5;color:#222;padding:6px;max-width:480px;margin:0 auto}
+.hdr{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hdr h1{font-size:14px;font-weight:600;text-align:center}
+.hdr .sub{font-size:11px;color:#777;text-align:center;margin-top:2px}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.cell{background:#fff;border-radius:10px;padding:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.cell-title{font-size:12px;font-weight:600;color:#333;margin-bottom:4px;text-align:center;display:flex;align-items:center;justify-content:center;gap:4px}
+.cell-title .tag{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600}
+.tag-fc{background:#EAF3DE;color:#3B6D11}
+.tag-fo{background:#FAECE7;color:#993C1D}
+canvas{width:100%;height:auto;display:block;border-radius:6px;background:#f7f9fc}
+.metrics{display:flex;gap:4px;margin-top:4px;font-size:10px}
+.metrics>div{flex:1;background:#f7f9fc;border-radius:5px;padding:4px 6px;text-align:center}
+.metrics b{display:block;font-size:12px;color:#222}
+.metrics small{color:#888}
+
+.ctrl{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.module-title{font-size:12px;font-weight:600;color:#333;text-align:center;margin-bottom:6px}
+.pointer-track{position:relative;height:50px;background:#f7f9fc;border-radius:10px;border:1px solid #e0e0e0;touch-action:none;cursor:pointer;overflow:hidden}
+.pointer-fill{position:absolute;left:0;top:0;height:100%;width:0%;background:#cfd8e8;border-radius:10px 0 0 10px}
+.pointer-knob{position:absolute;top:50%;left:0%;width:30px;height:30px;border-radius:50%;background:#185fa5;border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
+.pointer-scale{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+.ptr-tick{position:absolute;top:3px;width:1px;height:7px;background:#bbb}
+.ptr-tick.major{height:13px;background:#999}
+.ptr-label{position:absolute;bottom:3px;font-size:8px;color:#999;transform:translateX(-50%)}
+.pointer-readout{display:flex;justify-content:space-around;margin-top:8px;font-size:11px;color:#555}
+.pointer-readout b{font-size:14px;color:#185fa5;margin-left:3px}
+.btn-row{display:flex;gap:10px;justify-content:center;margin-top:10px}
+.btn{padding:9px 22px;font-size:13px;font-weight:600;border:none;border-radius:8px;color:#fff;cursor:pointer;flex:1;max-width:140px}
+.btn-run{background:#2e9e6b}.btn-run:active{background:#258a5c}
+.btn-reset{background:#d9534f}.btn-reset:active{background:#c0433f}
+.note{font-size:10px;color:#888;margin-top:8px;line-height:1.5;text-align:center}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>气动调节阀探究 <span style="font-size:10px;font-weight:400;opacity:.7">v1.6</span></h1>
+  <div class="sub">对比气开阀(FC)与气关阀(FO) — 拖动指针调节气压，观察阀芯与流量变化</div>
+</div>
+
+<div class="grid">
+  <!-- 1行1列：气开阀 -->
+  <div class="cell">
+    <div class="cell-title">气开阀(FC) <span class="tag tag-fc">Fail-Close</span></div>
+    <canvas id="cvsFC" width="200" height="240"></canvas>
+    <div class="metrics">
+      <div>气压 Pc<b id="valPcFC" style="color:#185fa5">0.020</b><small>MPa</small></div>
+      <div>流量 Q<b id="valQFC" style="color:#2e9e6b">0%</b><small>%Qmax</small></div>
+    </div>
+  </div>
+
+  <!-- 1行2列：气开阀流量曲线 -->
+  <div class="cell">
+    <div class="cell-title">气开阀 气压-流量关系</div>
+    <canvas id="cvsCurveFC" width="200" height="160"></canvas>
+  </div>
+
+  <!-- 2行1列：气关阀 -->
+  <div class="cell">
+    <div class="cell-title">气关阀(FO) <span class="tag tag-fo">Fail-Open</span></div>
+    <canvas id="cvsFO" width="200" height="240"></canvas>
+    <div class="metrics">
+      <div>气压 Pc<b id="valPcFO" style="color:#185fa5">0.020</b><small>MPa</small></div>
+      <div>流量 Q<b id="valQFO" style="color:#d9534f">100%</b><small>%Qmax</small></div>
+    </div>
+  </div>
+
+  <!-- 2行2列：气关阀流量曲线 -->
+  <div class="cell">
+    <div class="cell-title">气关阀 气压-流量关系</div>
+    <canvas id="cvsCurveFO" width="200" height="160"></canvas>
+  </div>
+</div>
+
+<!-- 指针式气压调节模块 + 控制按钮 -->
+<div class="ctrl">
+  <div class="module-title">指针式气压调节（向右拨气压增大，向左拨气压减小）</div>
+  <div class="pointer-track" id="ptrTrack">
+    <div class="pointer-fill" id="ptrFill"></div>
+    <div class="pointer-scale" id="ptrScale"></div>
+    <div class="pointer-knob" id="ptrKnob"></div>
+  </div>
+  <div class="pointer-readout">
+    <span>气压 Pc<b id="valPc">0.020</b><small>MPa</small></span>
+    <span>信号设定<b id="valOpen">0</b><small>%</small></span>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-run" id="btnRun">开始运行</button>
+    <button class="btn btn-reset" id="btnReset">重置</button>
+  </div>
+  <div class="note"><b>原理：</b>气开阀(FC)—气压↑→膜片上鼓(气在膜室下腔)→弹簧向上拉伸→阀芯上移→开度↑→流量↑（失气关闭）<br>气关阀(FO)—气压↑→膜片下鼓(气在膜室上腔)→弹簧向下压缩→阀芯下移→开度↓→流量↓（失气打开）<br>两者阀体/执行机构相同，区别在于<strong>进气腔位置与阀芯朝向相反</strong>。管道粗细随流量实时变化。<br>右侧为<strong>气压-流量关系图</strong>（虚线=理论关系，拖动/运行即描出实际轨迹，同时显示当前气压与流量）。</div>
+</div>
+
+<script>
+(function(){
+// ========== Canvas 引用 ==========
+var cvsFC=document.getElementById('cvsFC'),ctxFC=cvsFC.getContext('2d');
+var cvsFO=document.getElementById('cvsFO'),ctxFO=cvsFO.getContext('2d');
+var cvsCurveFC=document.getElementById('cvsCurveFC'),ctxCFC=cvsCurveFC.getContext('2d');
+var cvsCurveFO=document.getElementById('cvsCurveFO'),ctxCFO=cvsCurveFO.getContext('2d');
+
+var valPcFC=document.getElementById('valPcFC'),valQFC=document.getElementById('valQFC');
+var valPcFO=document.getElementById('valPcFO'),valQFO=document.getElementById('valQFO');
+var btnRun=document.getElementById('btnRun'),btnReset=document.getElementById('btnReset');
+var ptrTrack=document.getElementById('ptrTrack'),ptrKnob=document.getElementById('ptrKnob'),ptrFill=document.getElementById('ptrFill');
+var valPc=document.getElementById('valPc'),valOpen=document.getElementById('valOpen');
+var ptrScale=document.getElementById('ptrScale');
+
+var W=200,H=240,CW=200,CH=160;
+
+// ========== 状态 ==========
+var state={
+  t:0, running:false, dir:1, phase:0,
+  flowPhaseFC:0, flowPhaseFO:0,
+  historyFC:[], historyFO:[], maxHistory:300, lastRecord:0
+};
+
+// ========== 工具函数 ==========
+function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
+function phaseToPc(ph){return 0.02+0.08*clamp(ph,0,1)}
+function pcToStroke(pc){return clamp((pc-0.02)/0.08,0,1)}
+function flowOf(pc,isFC){var s=pcToStroke(pc);return isFC?s:1-s;}
+
+// 圆角矩形辅助
+function rr(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+
+// ========== 生成指针刻度 ==========
+(function(){
+  for(var i=0;i<=10;i++){
+    var tick=document.createElement('div');
+    tick.className='ptr-tick'+(i%5===0?' major':'');
+    tick.style.left=(i*10)+'%';
+    ptrScale.appendChild(tick);
+    if(i%5===0){
+      var lab=document.createElement('div');
+      lab.className='ptr-label';
+      lab.style.left=(i*10)+'%';
+      lab.textContent=i*10+'%';
+      ptrScale.appendChild(lab);
+    }
+  }
+})();
+
+// ========== 绘制阀门剖面 ==========
+// 气开阀(FC)：气在膜室下腔→膜片上鼓→弹簧向上拉伸→阀芯上移→流量↑
+// 气关阀(FO)：气在膜室上腔→膜片下鼓→弹簧向下压缩→阀芯下移→流量↓
+function drawValve(ctx,pc,isFC){
+  ctx.clearRect(0,0,W,H);
+  var cx=W/2;
+  var strokePx=pcToStroke(pc)*18;          // 0~18 位移量
+  var flow=flowOf(pc,isFC);
+  var fphase=isFC?state.flowPhaseFC:state.flowPhaseFO;
+
+  ctx.fillStyle='#f7f9fc';ctx.fillRect(0,0,W,H);
+
+  // ===== 膜室布局 =====
+  var caseW=74, caseLeft=cx-caseW/2, caseRight=cx+caseW/2;
+  var caseTop=18, caseBot=122;
+  var midY=(caseTop+caseBot)/2;                       // 膜片中性位置
+  var apexY=isFC ? midY - strokePx : midY + strokePx; // 膜片中心随气压鼓胀
+  var baseY=caseBot-6;                                // 弹簧底座(固定)
+
+  // 1) 膜室外壳
+  ctx.fillStyle='#E6F1FB';ctx.strokeStyle='#185FA5';ctx.lineWidth=1.2;
+  rr(ctx,caseLeft,caseTop,caseW,caseBot-caseTop,6);ctx.fill();ctx.stroke();
+
+  // 2) 气室填充(被气充满的半腔)
+  ctx.save();
+  rr(ctx,caseLeft+1.5,caseTop+1.5,caseW-3,caseBot-caseTop-3,5);ctx.clip();
+  ctx.fillStyle='rgba(120,170,230,0.30)';
+  if(isFC) ctx.fillRect(caseLeft, midY, caseW, caseBot-midY);     // 下腔进气
+  else     ctx.fillRect(caseLeft, caseTop, caseW, midY-caseTop);  // 上腔进气
+  ctx.restore();
+
+  // 3) 进气箭头(Pc) 指向被气充满的半腔
+  var gasMidY=isFC?(midY+caseBot)/2:(caseTop+midY)/2;
+  ctx.strokeStyle='#A32D2D';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(caseLeft-18,gasMidY);ctx.lineTo(caseLeft,gasMidY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(caseLeft-5,gasMidY-4);ctx.lineTo(caseLeft,gasMidY);ctx.lineTo(caseLeft-5,gasMidY+4);ctx.closePath();
+  ctx.fillStyle='#A32D2D';ctx.fill();
+  ctx.fillStyle='#A32D2D';ctx.font='10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Pc',caseLeft-22,gasMidY-6);
+
+  // 腔室标注
+  ctx.font='8px sans-serif';ctx.textAlign='left';
+  if(isFC){ ctx.fillStyle='#185FA5';ctx.fillText('下腔(气)',caseLeft+3,midY+12);
+            ctx.fillStyle='#9aa';ctx.fillText('上腔(通大气)',caseLeft+3,midY-6); }
+  else    { ctx.fillStyle='#185FA5';ctx.fillText('上腔(气)',caseLeft+3,caseTop+12);
+            ctx.fillStyle='#9aa';ctx.fillText('下腔(通大气)',caseLeft+3,caseBot-6); }
+
+  // 4) 薄膜片(在膜室中间,随气压鼓胀)
+  ctx.strokeStyle='#378ADD';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(caseLeft,midY);
+  if(isFC) ctx.quadraticCurveTo(cx, midY-2*strokePx, caseRight,midY);   // 上鼓
+  else     ctx.quadraticCurveTo(cx, midY+2*strokePx, caseRight,midY);   // 下鼓
+  ctx.stroke();
+  ctx.fillStyle='#B5D4F4';ctx.strokeStyle='#185FA5';ctx.lineWidth=1;
+  ctx.beginPath();ctx.ellipse(cx,apexY,7,3,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+
+  // 5) 弹簧(在膜片下方,随膜片运动：FC拉伸/FO压缩)
+  var spTop=apexY+3, spBot=baseY;
+  ctx.strokeStyle='#BA7517';ctx.lineWidth=1.6;ctx.lineJoin='round';
+  ctx.beginPath();
+  var nCoils=7, spLeft=cx-9, spRight=cx+9;
+  var spStep=(spBot-spTop)/nCoils;
+  ctx.moveTo(spLeft,spTop);
+  for(var i=0;i<nCoils;i++){
+    var yy=spTop+spStep*(i+0.5);
+    ctx.lineTo(spRight, yy-spStep*0.25);
+    ctx.lineTo(spLeft, yy+spStep*0.25);
+  }
+  ctx.lineTo(cx,spBot);ctx.stroke();
+
+  // 6) 密封填料
+  var packingTop=128, packingBot=148;
+  ctx.fillStyle='#FAECE7';ctx.strokeStyle='#D85A30';ctx.lineWidth=0.8;
+  ctx.fillRect(cx-10,packingTop,20,packingBot-packingTop);ctx.strokeRect(cx-10,packingTop,20,packingBot-packingTop);
+  ctx.strokeStyle='#993C1D';ctx.lineWidth=0.5;ctx.globalAlpha=0.5;
+  for(var py=packingTop+3;py<packingBot-2;py+=4){
+    ctx.beginPath();ctx.moveTo(cx-8,py);ctx.lineTo(cx+8,py+4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+8,py);ctx.lineTo(cx-8,py+4);ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+
+  // 7) 阀体
+  var bodyTop=152, bodyBot=230, bodyW=76;
+  ctx.fillStyle='#EAF3DE';ctx.strokeStyle='#3B6D11';ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(cx-bodyW/2,bodyTop);
+  ctx.bezierCurveTo(cx-bodyW/2-8,bodyTop+15,cx-bodyW/2-12,bodyTop+35,cx-bodyW/2,bodyTop+38);
+  ctx.lineTo(cx-bodyW/2,bodyBot-6);
+  ctx.bezierCurveTo(cx-bodyW/2-16,bodyBot,cx+bodyW/2+16,bodyBot,cx+bodyW/2,bodyBot-6);
+  ctx.lineTo(cx+bodyW/2,bodyTop+38);
+  ctx.bezierCurveTo(cx+bodyW/2+12,bodyTop+35,cx+bodyW/2+8,bodyTop+15,cx+bodyW/2,bodyTop);
+  ctx.closePath();ctx.fill();ctx.stroke();
+
+  // 8) 阀座
+  var seatCenterY=bodyTop+37;
+  ctx.fillStyle='#D0D0D0';ctx.strokeStyle='#888';ctx.lineWidth=0.8;
+  ctx.fillRect(cx-14,seatCenterY-3,28,6);ctx.strokeRect(cx-14,seatCenterY-3,28,6);
+
+  // 9) 阀芯(倒梯形:宽顶窄底; FC上移→顶部, FO下移→底部; 阀杆拉长贯穿阀体)
+  var s=strokePx/18;                            // 0~1 归一化行程
+  var topY=161, botY=221, travel=botY-topY;     // 阀芯全行程:顶部<->底部
+  var plugCenterY = isFC ? (topY + (1-s)*travel) : (topY + s*travel);
+  ctx.fillStyle='#F0997B';ctx.strokeStyle='#993C1D';ctx.lineWidth=0.8;
+  ctx.beginPath();
+  ctx.moveTo(cx-9,plugCenterY-9);               // 顶左(宽)
+  ctx.lineTo(cx+9,plugCenterY-9);               // 顶右(宽)
+  ctx.lineTo(cx+3,plugCenterY+9);               // 底右(窄)
+  ctx.lineTo(cx-3,plugCenterY+9);               // 底左(窄)
+  ctx.closePath();ctx.fill();ctx.stroke();
+  // 阀杆(膜片中心→阀芯顶,贯穿阀体,画在主体之上保持可见)
+  ctx.strokeStyle='#5F5E5A';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(cx,apexY);ctx.lineTo(cx,plugCenterY-9);ctx.stroke();
+
+  // 10) 流量管道(加粗,宽度∝流量)
+  var arrowY=bodyTop+50;
+  var pipeW=2+flow*12;
+  var pipeColor=flow>0.04?(isFC?'#2e9e6b':'#d9534f'):'#cfcfcf';
+  ctx.strokeStyle=pipeColor;ctx.lineWidth=pipeW;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(2,arrowY);ctx.lineTo(cx-bodyW/2-8,arrowY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx+bodyW/2+8,arrowY);ctx.lineTo(W-2,arrowY);ctx.stroke();
+  if(flow>0.04){
+    var spacing=16, off=((fphase%spacing)+spacing)%spacing;
+    ctx.fillStyle=isFC?'#2e9e6b':'#d9534f';
+    for(var x=off;x<cx-bodyW/2-8;x+=spacing){ctx.beginPath();ctx.arc(x,arrowY,Math.max(1.5,pipeW*0.26),0,Math.PI*2);ctx.fill();}
+    for(var x=cx+bodyW/2+8+off;x<W-2;x+=spacing){ctx.beginPath();ctx.arc(x,arrowY,Math.max(1.5,pipeW*0.26),0,Math.PI*2);ctx.fill();}
+  }
+  ctx.fillStyle=pipeColor;
+  ctx.beginPath();ctx.moveTo(cx-bodyW/2-13,arrowY-5);ctx.lineTo(cx-bodyW/2-7,arrowY);ctx.lineTo(cx-bodyW/2-13,arrowY+5);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(W-13,arrowY-5);ctx.lineTo(W-7,arrowY);ctx.lineTo(W-13,arrowY+5);ctx.closePath();ctx.fill();
+
+  // 11) 开度指示条（开度=流量；与气压：FC 同向、FO 反向）
+  var barX=6,barW=12,barH=72,barY=58;
+  var open=isFC?pcToStroke(pc):1-pcToStroke(pc);
+  ctx.fillStyle='#eee';ctx.fillRect(barX,barY,barW,barH);
+  var fillH=barH*open;
+  ctx.fillStyle=isFC?'#2e9e6b':'#d9534f';
+  ctx.fillRect(barX,barY+barH-fillH,barW,fillH);
+  ctx.strokeStyle='#bbb';ctx.lineWidth=0.5;ctx.strokeRect(barX,barY,barW,barH);
+  ctx.fillStyle='#555';ctx.font='8px sans-serif';ctx.textAlign='center';
+  ctx.fillText('开度',barX+barW/2,barY-3);
+  ctx.fillText(Math.round(open*100)+'%',barX+barW/2,barY+barH+10);
+
+  // 12) 部件标签
+  ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillStyle='#666';
+  ctx.fillText('薄膜片',caseRight+3,midY+3);
+  ctx.fillText('弹簧',caseRight+3,baseY-6);
+  ctx.fillText('密封填料',caseRight+3,packingTop+8);
+  ctx.fillText('阀体',caseRight+3,bodyBot-8);
+  ctx.fillText('阀芯',caseRight+3,plugCenterY+3);
+
+  // 版本水印
+  ctx.fillStyle='rgba(100,100,100,0.3)';ctx.font='9px sans-serif';ctx.textAlign='right';
+  ctx.fillText('v1.6',W-4,H-4);
+}
+
+// ========== 绘制开度-流量关系图 ==========
+// 横轴=开度(0~100%)，纵轴=流量(0~100%)；同时显示开度与流量
+function drawCurve(ctx,history,isFC){
+  ctx.clearRect(0,0,CW,CH);
+  var pad={l:34,r:10,t:12,b:24};
+  var Wc=CW-pad.l-pad.r,Hc=CH-pad.t-pad.b;
+  ctx.fillStyle='#f7f9fc';ctx.fillRect(0,0,CW,CH);
+
+  function X(pc){return pad.l+Wc*clamp(pc,0,1);}   // pc:气压标准化0~1
+  function Y(q){return pad.t+Hc*(1-clamp(q,0,1));}      // q:0~1
+
+  // 网格
+  ctx.strokeStyle='#e8e8e8';ctx.lineWidth=0.5;
+  for(var i=0;i<=4;i++){var y=pad.t+Hc*i/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+Wc,y);ctx.stroke();}
+  for(var i=0;i<=5;i++){var x=pad.l+Wc*i/5;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+Hc);ctx.stroke();}
+
+  // 坐标轴
+  ctx.strokeStyle='#444';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+Hc);ctx.lineTo(pad.l+Wc,pad.t+Hc);ctx.stroke();
+
+  // 轴刻度与标签
+  ctx.fillStyle='#555';ctx.font='8px sans-serif';
+  ctx.textAlign='right';
+  for(var i=0;i<=4;i++){ctx.fillText((i*25)+'%',pad.l-3,pad.t+Hc*(1-i/4)+3);}
+  ctx.textAlign='center';
+  for(var i=0;i<=5;i++){ctx.fillText((i*20)+'%',pad.l+Wc*i/5,pad.t+Hc+12);}
+  ctx.fillText('气压 %',pad.l+Wc/2,CH-2);
+  ctx.save();ctx.translate(9,pad.t+Hc/2);ctx.rotate(-Math.PI/2);ctx.fillText('流量 %',0,0);ctx.restore();
+
+  // 理论关系参考线（虚线，始终显示，确保面板不空白）
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#bbb';ctx.lineWidth=1;
+  ctx.beginPath();
+  // 气压-流量关系：气压↑ → FC 流量↑、FO 流量↓
+  if(isFC){ctx.moveTo(X(0),Y(0));ctx.lineTo(X(1),Y(1));}      // 气开：气压↑流量↑
+  else{ctx.moveTo(X(0),Y(1));ctx.lineTo(X(1),Y(0));}          // 气关：气压↑流量↓
+  ctx.stroke();ctx.setLineDash([]);
+
+  // 实际描出的轨迹（运行/拖动时累积）
+  if(history.length>0){
+    var col=isFC?'#2e9e6b':'#d9534f';
+    ctx.strokeStyle=col;ctx.lineWidth=1.6;ctx.lineJoin='round';
+    ctx.beginPath();
+    for(var i=0;i<history.length;i++){
+      var px=X(history[i].pc),py=Y(history[i].q);
+      if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+    // 当前点
+    var last=history[history.length-1];
+    var lpx=X(last.pc),lpy=Y(last.q);
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(lpx,lpy,3.2,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(lpx,lpy,3.2,0,Math.PI*2);ctx.stroke();
+    // 同时显示开度与流量数值
+    ctx.fillStyle='#333';ctx.font='8px sans-serif';ctx.textAlign='left';
+    ctx.fillText('气压'+Math.round(last.pc*100)+'%  流量'+Math.round(last.q*100)+'%',pad.l+3,pad.t+9);
+  }
+}
+
+// ========== 更新数值显示 ==========
+function updateMetrics(pc){
+  var qFC=flowOf(pc,true)*100, qFO=flowOf(pc,false)*100;
+  valPcFC.textContent=pc.toFixed(3);
+  valQFC.textContent=Math.round(qFC)+'%';
+  valPcFO.textContent=pc.toFixed(3);
+  valQFO.textContent=Math.round(qFO)+'%';
+}
+function updatePointer(){
+  var frac=clamp(state.phase,0,1);
+  ptrKnob.style.left=(frac*100)+'%';
+  ptrFill.style.width=(frac*100)+'%';
+  var pc=phaseToPc(frac);
+  valPc.textContent=pc.toFixed(3);
+  valOpen.textContent=Math.round(frac*100);
+}
+function stopSweep(){state.running=false;btnRun.textContent='开始运行';}
+
+// ========== 指针拖拽 ==========
+var dragging=false;
+function setSignalFromX(clientX){
+  var rect=ptrTrack.getBoundingClientRect();
+  var x=clientX-rect.left;
+  state.phase=clamp(x/rect.width,0,1);
+  updatePointer();
+}
+ptrTrack.addEventListener('pointerdown',function(e){
+  dragging=true;
+  if(state.running)stopSweep();
+  setSignalFromX(e.clientX);
+  try{ptrTrack.setPointerCapture(e.pointerId);}catch(_){}
+  e.preventDefault();
+});
+ptrTrack.addEventListener('pointermove',function(e){
+  if(!dragging)return;
+  setSignalFromX(e.clientX);
+  e.preventDefault();
+});
+ptrTrack.addEventListener('pointerup',function(e){dragging=false;});
+ptrTrack.addEventListener('pointercancel',function(e){dragging=false;});
+
+// ========== 按钮 ==========
+btnRun.addEventListener('click',function(){
+  if(state.running){stopSweep();}
+  else{state.running=true;btnRun.textContent='暂停';}
+});
+btnReset.addEventListener('click',function(){
+  state.running=false;state.phase=0;state.t=0;state.dir=1;
+  state.historyFC=[];state.historyFO=[];state.lastRecord=0;
+  state.flowPhaseFC=0;state.flowPhaseFO=0;
+  btnRun.textContent='开始运行';
+  updatePointer();
+  drawValve(ctxFC,0.02,true);drawValve(ctxFO,0.02,false);
+  drawCurve(ctxCFC,[],true);drawCurve(ctxCFO,[],false);
+});
+
+// ========== 动画循环 ==========
+var lastTs=0;
+function animate(ts){
+  if(!lastTs)lastTs=ts;
+  var dt=ts-lastTs;lastTs=ts;
+  state.t+=dt;
+
+  if(state.running){
+    var spd=0.00018;
+    state.phase+=state.dir*spd*dt;
+    if(state.phase>=1){state.phase=1;state.dir=-1;}
+    if(state.phase<=0){state.phase=0;state.dir=1;}
+    updatePointer();
+  }
+
+  var pc=phaseToPc(state.phase);
+  var flowFC=flowOf(pc,true), flowFO=flowOf(pc,false);
+  state.flowPhaseFC+=dt*0.06*flowFC;
+  state.flowPhaseFO+=dt*0.06*flowFO;
+
+  drawValve(ctxFC,pc,true);
+  drawValve(ctxFO,pc,false);
+
+  if((state.running||dragging) && (!state.lastRecord||state.t-state.lastRecord>50)){
+    state.lastRecord=state.t;
+    state.historyFC.push({pc:state.phase,q:flowFC});            // FC：气压↑流量↑
+    state.historyFO.push({pc:state.phase,q:flowFO});            // FO：气压↑流量↓
+    if(state.historyFC.length>state.maxHistory)state.historyFC.shift();
+    if(state.historyFO.length>state.maxHistory)state.historyFO.shift();
+  }
+
+  drawCurve(ctxCFC,state.historyFC,true);
+  drawCurve(ctxCFO,state.historyFO,false);
+  updateMetrics(pc);
+
+  requestAnimationFrame(animate);
+}
+
+// 初始绘制
+updatePointer();
+requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
