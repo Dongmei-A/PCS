@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>固有流量特性探究</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;background:#f0f2f5;color:#333;padding:8px;max-width:520px;margin:0 auto}
+h1{font-size:15px;font-weight:500;text-align:center;padding:10px 0 6px;color:#222}
+h1 span{font-size:10px;font-weight:400;opacity:.6}
+
+/* 曲线图区域 */
+.chart-wrap{background:#fff;border-radius:10px;border:.5px solid #e0e0e0;padding:10px;margin-bottom:10px}
+.chart-canvas{width:100%;display:block}
+.hint{font-size:11px;color:#888;text-align:center;margin-top:6px}
+
+/* 按钮区 */
+.btn-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:8px}
+.btn{padding:7px 13px;border:1.5px solid;border-radius:18px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;user-select:none;background:#fff}
+.btn.on{color:#fff}
+.btn.off{color:#888}
+.btn-lin{border-color:#378ADD}.btn-lin.on{background:#378ADD}
+.btn-eq{border-color:#D85A30}.btn-eq.on{background:#D85A30}
+.btn-qk{border-color:#2e9e6b}.btn-qk.on{background:#2e9e6b}
+.btn-par{border-color:#7F77DD}.btn-par.on{background:#7F77DD}
+.btn-all{border-color:#999;color:#666;font-size:11.5px;padding:6px 12px}
+
+/* 答题区 */
+.quiz{background:#fff;border-radius:10px;border:.5px solid #e0e0e0;padding:12px;margin-bottom:10px}
+.quiz-head{font-size:13px;font-weight:500;text-align:center;margin-bottom:10px;color:#222;display:flex;align-items:center;justify-content:center;gap:8px}
+.quiz-emoji{font-size:15px;min-height:18px}
+.quiz-emoji.ok{color:#3B6D11}
+.quiz-emoji.wrong{color:#a32d2d;font-size:12px}
+.quiz-reset{font-size:11px;color:#888;text-align:center;margin-top:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+.quiz-reset:active{color:#378ADD}
+
+.quiz-body{position:relative;display:flex;justify-content:space-between;gap:6px}
+.link-layer{position:absolute;left:0;top:0;z-index:1;pointer-events:none}
+.col{flex:1;display:flex;flex-direction:column;gap:10px;z-index:2}
+.col-left{align-items:flex-start}
+.col-right{align-items:flex-end}
+.node{position:relative;font-size:12px;padding:7px 9px;border-radius:7px;border:1.5px solid #c9c9c9;background:#fafafa;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;transition:all .12s;display:flex;align-items:center;white-space:nowrap}
+.lnode{color:#333;min-width:96px}
+.rnode{color:#333}
+.node.sel{background:#eaf1ff;border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,.18)}
+.node.linked{background:#f3f7f0;border-color:#9bbf7a}
+.node .num{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;margin-right:5px;border:1.5px solid #378ADD;color:#378ADD;flex-shrink:0}
+.cells{display:flex;gap:2px;margin-right:6px}
+.cell{width:6px;height:13px;border-radius:1.5px;background:#e2e2e2}
+.cell.on{background:#6b7fd7}
+
+/* 底部说明 */
+.note{font-size:11.5px;color:#666;line-height:1.65;padding:8px 10px;background:#fafbfc;border-radius:8px;border:.5px solid #eee}
+.note b{color:#333}
+</style>
+</head>
+<body>
+
+<h1>固有流量特性探究 <span>v2.1</span></h1>
+
+<!-- 曲线图 -->
+<div class="chart-wrap">
+<canvas id="cv" class="chart-canvas"></canvas>
+<div class="hint">点击下方按钮，观察对应曲线从低开度（左）向高开度（右）逐条画出</div>
+</div>
+
+<!-- 按钮控制 -->
+<div class="btn-row">
+<button class="btn btn-lin off" data-curve="lin">① 线性</button>
+<button class="btn btn-eq off" data-curve="eq">② 等百分比</button>
+<button class="btn btn-qk off" data-curve="qk">③ 快开</button>
+<button class="btn btn-par off" data-curve="par">④ 抛物线</button>
+<button class="btn btn-all" id="btnAll">全部显示</button>
+</div>
+
+<!-- 答题区：小开度 vs 大开度 -->
+<div class="quiz">
+  <div class="quiz-head">小开度区（左下）<span class="quiz-emoji" id="emoSmall"></span></div>
+  <div class="quiz-body" id="bodySmall">
+    <div class="col col-left">
+      <div class="node lnode" data-curve="lin"><span class="num">①</span>线性</div>
+      <div class="node lnode" data-curve="eq"><span class="num">②</span>等百分比</div>
+      <div class="node lnode" data-curve="qk"><span class="num">③</span>快开</div>
+      <div class="node lnode" data-curve="par"><span class="num">④</span>抛物线</div>
+    </div>
+    <svg class="link-layer" id="svgSmall"></svg>
+    <div class="col col-right">
+      <div class="node rnode" data-rank="max">斜率最大</div>
+      <div class="node rnode" data-rank="mid">斜率中等</div>
+      <div class="node rnode" data-rank="min2">斜率较小</div>
+      <div class="node rnode" data-rank="min">斜率最小</div>
+    </div>
+  </div>
+  <div class="quiz-reset" data-group="small">重置连线</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-head">大开度区（右上）<span class="quiz-emoji" id="emoLarge"></span></div>
+  <div class="quiz-body" id="bodyLarge">
+    <div class="col col-left">
+      <div class="node lnode" data-curve="lin"><span class="num">①</span>线性</div>
+      <div class="node lnode" data-curve="eq"><span class="num">②</span>等百分比</div>
+      <div class="node lnode" data-curve="qk"><span class="num">③</span>快开</div>
+      <div class="node lnode" data-curve="par"><span class="num">④</span>抛物线</div>
+    </div>
+    <svg class="link-layer" id="svgLarge"></svg>
+    <div class="col col-right">
+      <div class="node rnode" data-rank="max">斜率最大</div>
+      <div class="node rnode" data-rank="mid">斜率中等</div>
+      <div class="node rnode" data-rank="min2">斜率较小</div>
+      <div class="node rnode" data-rank="min">斜率最小</div>
+    </div>
+  </div>
+  <div class="quiz-reset" data-group="large">重置连线</div>
+</div>
+
+<!-- 说明 -->
+<div class="note">
+<b>坐标轴：</b>横轴 L/L%（相对开度）、纵轴 F/Fmax%（相对流量），范围均为 0~100。四根曲线均从 (0, 3.3) 出发、到 (100, 100) 结束。<br>
+<b>斜率规律：</b>① 线性——全程等斜率；② 等百分比——起点平缓、越往右越陡（先小后大）；③ 快开——起点最陡、越往右越平（先大后小）；④ 抛物线——介于线性与等百分比之间。<br>
+<b>连线练习：</b>点击左侧编号，再点击右侧对应的斜率特点，连成线条。两组全部连对即弹出 😊；有误则提示"再试试"。
+</div>
+
+<script>
+(function(){
+var canvas=document.getElementById('cv');
+var ctx=canvas.getContext('2d');
+var W,H;
+
+// ===== 坐标系：横纵均为 0~100 =====
+var pad={l:36,r:16,t:26,b:34};
+var Xmin=0,Xmax=100,Ymin=0,Ymax=100;
+function toX(v){return pad.l+(v-Xmin)/(Xmax-Xmin)*(W-pad.l-pad.r)}
+function toY(v){return pad.t+(H-pad.t-pad.b)*(Ymax-v)/(Ymax-Ymin)}
+
+// ===== 四条曲线：均过 (0,3.3) 与 (100,100) =====
+// l: 0~1 相对开度；返回 0~100 的相对流量
+function fLin(l){return 3.3+96.7*l}                                   // 线性：等斜率
+function fEq(l){return 3.3+96.7*Math.pow(l,3.2)}                       // 等百分比：下凸，小开度极平、大开度极陡（更弯）
+// 快开曲线——沿参考红线关键点 Catmull-Rom 样条插值（平滑，无折点）
+var _qkPts=[[0,3.3],[2,35],[5,52],[10,64],[15,71],[20,77],[30,85],[40,90],[50,94],[60,96],[70,97.5],[80,98.5],[90,99.3],[100,100]];
+function _qkSpline(x){
+  if(x<=_qkPts[0][0])return _qkPts[0][1];
+  if(x>=_qkPts[_qkPts.length-1][0])return _qkPts[_qkPts.length-1][1];
+  var i=0; while(i<_qkPts.length-1 && _qkPts[i+1][0]<x) i++;
+  var p0=_qkPts[i-1]||_qkPts[i], p1=_qkPts[i], p2=_qkPts[i+1], p3=_qkPts[i+2]||_qkPts[i+1];
+  var t=(x-p1[0])/(p2[0]-p1[0]), t2=t*t, t3=t2*t;
+  var y=0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
+  return y<3.3?3.3:(y>100?100:y);
+}
+function fQk(l){return _qkSpline(l*100);}
+function fPar(l){return 3.3+96.7*(0.35*l+0.65*l*l)}                   // 抛物线：更弯，介于线性与等百分比之间
+
+var curves=[
+ {id:'lin',color:'#378ADD',gen:fLin,vis:false,prog:0,lab:'① 线性',lx:54,ly:50},
+ {id:'eq', color:'#D85A30',gen:fEq, vis:false,prog:0,lab:'② 等百分比',lx:52,ly:12},
+ {id:'qk', color:'#2e9e6b',gen:fQk, vis:false,prog:0,lab:'③ 快开',lx:24,ly:68},
+ {id:'par',color:'#7F77DD',gen:fPar,vis:false,prog:0,lab:'④ 抛物线',lx:62,ly:44}
+];
+
+// ===== 绘制坐标系 =====
+function drawAxes(){
+ctx.fillStyle='#fafbfc';ctx.fillRect(0,0,W,H);
+ctx.strokeStyle='#eee';ctx.lineWidth=.5;
+for(var i=0;i<=5;i++){var y=toY(i*20);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();}
+for(var i=0;i<=5;i++){var x=toX(i*20);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,H-pad.b);ctx.stroke();}
+ctx.strokeStyle='#444';ctx.lineWidth=1;
+ctx.beginPath();ctx.moveTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r+8,H-pad.b);ctx.stroke();
+ctx.beginPath();ctx.moveTo(pad.l,H-pad.b);ctx.lineTo(pad.l,pad.t-8);ctx.stroke();
+ctx.fillStyle='#666';ctx.font='9.5px sans-serif';ctx.textAlign='center';
+[0,20,40,60,80,100].forEach(function(v){ctx.fillText(v,toX(v),H-pad.b+13)});
+ctx.textAlign='right';
+[0,20,40,60,80,100].forEach(function(v){ctx.fillText(v,pad.l-5,toY(v)+3)});
+ctx.font='10px sans-serif';ctx.fillStyle='#555';
+ctx.textAlign='center';ctx.fillText('L/L%',W/2,H-2);
+ctx.save();ctx.translate(10,(H)/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('F/Fmax %',0,0);ctx.restore();
+ctx.fillStyle='#999';ctx.font='9px sans-serif';ctx.textAlign='left';
+ctx.fillText('3.3',pad.l+3,toY(3.3)-3);
+}
+
+// ===== 按进度绘制曲线（从低开度到高开度）=====
+function drawCurveAnimated(c){
+var N=220, last=Math.max(1,Math.floor(N*c.prog));
+ctx.strokeStyle=c.color;ctx.lineWidth=2.3;ctx.lineCap='round';ctx.lineJoin='round';
+ctx.beginPath();
+for(var i=0;i<=last;i++){
+  var l=i/N, x=toX(l*100), y=toY(c.gen(l));
+  if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+}
+ctx.stroke();
+// 绘制中的笔尖小圆点
+if(c.prog<1){
+  var lp=c.prog, x=toX(lp*100), y=toY(c.gen(lp));
+  ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(x,y,2.6,0,Math.PI*2);ctx.fill();
+}
+}
+
+function render(){
+drawAxes();
+curves.forEach(function(c){
+  if(!c.vis)return;
+  drawCurveAnimated(c);
+  if(c.prog>0.55){ctx.fillStyle=c.color;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText(c.lab,toX(c.lx),toY(c.ly));}
+});
+ctx.fillStyle='rgba(120,120,120,.28)';ctx.font='9px sans-serif';ctx.textAlign='right';
+ctx.fillText('v2.1',W-4,H-4);
+}
+
+function resize(){
+var r=canvas.parentElement.getBoundingClientRect();
+W=r.width;H=Math.min(r.width*.92,400);
+canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
+canvas.style.width=W+'px';canvas.style.height=H+'px';
+ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+render();
+}
+window.addEventListener('resize',resize);
+
+// ===== 按钮：按下时从低开度向高开度画出 =====
+var allOn=false;
+document.querySelectorAll('.btn[data-curve]').forEach(function(btn){
+btn.addEventListener('click',function(){
+  var id=this.dataset.curve;
+  var c=curves.filter(function(x){return x.id===id})[0];
+  c.vis=!c.vis;
+  if(c.vis)c.prog=0;          // 重新从 0 开始画
+  this.classList.toggle('on',c.vis);
+  this.classList.toggle('off',!c.vis);
+});
+});
+document.getElementById('btnAll').addEventListener('click',function(){
+allOn=!allOn;
+this.textContent=allOn?'全部隐藏':'全部显示';
+curves.forEach(function(c){c.vis=allOn; if(allOn)c.prog=0;});
+document.querySelectorAll('.btn[data-curve]').forEach(function(b){
+  var id=b.dataset.curve, c=curves.filter(function(x){return x.id===id})[0];
+  b.classList.toggle('on',c.vis);b.classList.toggle('off',!c.vis);
+});
+});
+
+// ===== 动画循环 =====
+var lastT=0;
+function loop(t){
+if(!lastT)lastT=t;var dt=(t-lastT)/1000;lastT=t;if(dt>0.1)dt=0.1;
+var animating=false;
+curves.forEach(function(c){if(c.vis&&c.prog<1){c.prog=Math.min(1,c.prog+dt*0.85);animating=true;}});
+render();
+requestAnimationFrame(loop);
+}
+
+// ============ 连线互动答题 ============
+var rankCells={max:6,mid:4,min2:3,min:1};
+// 右侧节点填入方格
+document.querySelectorAll('.rnode').forEach(function(n){
+  var n6=rankCells[n.dataset.rank], html='<span class="cells">';
+  for(var i=0;i<6;i++)html+='<i class="cell'+(i<n6?' on':'')+'"></i>';
+  html+='</span>';
+  n.insertAdjacentHTML('afterbegin',html);
+});
+
+function getCenter(el,svg){var e=el.getBoundingClientRect(),s=svg.getBoundingClientRect();return{x:e.left+e.width/2-s.left,y:e.top+e.height/2-s.top};}
+
+function makeGroup(id,bodyId,svgId,emoId,correct){
+  var body=document.getElementById(bodyId), svg=document.getElementById(svgId), emo=document.getElementById(emoId);
+  var g={body:body,svg:svg,emoji:emo,correct:correct,pending:null,links:[],
+    leftEls:{},rightEls:{},leftNodes:[],rightNodes:[]};
+  body.querySelectorAll('.lnode').forEach(function(n){g.leftEls[n.dataset.curve]=n;g.leftNodes.push(n);});
+  body.querySelectorAll('.rnode').forEach(function(n){g.rightEls[n.dataset.rank]=n;g.rightNodes.push(n);});
+  g.leftNodes.forEach(function(n){n.addEventListener('click',function(){onLeft(g,n.dataset.curve);});});
+  g.rightNodes.forEach(function(n){n.addEventListener('click',function(){onRight(g,n.dataset.rank);});});
+  return g;
+}
+function onLeft(g,curve){
+  if(g.pending===curve){g.pending=null;}
+  else{
+    g.links=g.links.filter(function(l){return l.left!==curve;});
+    g.pending=curve;
+  }
+  updateClasses(g);drawLines(g);evaluate(g);
+}
+function onRight(g,rank){
+  if(g.pending){
+    g.links=g.links.filter(function(l){return l.right!==rank && l.left!==g.pending;});
+    g.links.push({left:g.pending,right:rank});
+    g.pending=null;
+    updateClasses(g);drawLines(g);evaluate(g);
+  }else{
+    var before=g.links.length;
+    g.links=g.links.filter(function(l){return l.right!==rank;});
+    if(g.links.length!==before){updateClasses(g);drawLines(g);evaluate(g);}
+  }
+}
+function updateClasses(g){
+  g.leftNodes.concat(g.rightNodes).forEach(function(n){n.classList.remove('sel','linked');});
+  if(g.pending&&g.leftEls[g.pending])g.leftEls[g.pending].classList.add('sel');
+  g.links.forEach(function(l){
+    if(g.leftEls[l.left])g.leftEls[l.left].classList.add('linked');
+    if(g.rightEls[l.right])g.rightEls[l.right].classList.add('linked');
+  });
+}
+function drawLines(g){
+  var svg=g.svg;while(svg.firstChild)svg.removeChild(svg.firstChild);
+  var br=g.body.getBoundingClientRect();
+  svg.setAttribute('width',br.width);svg.setAttribute('height',br.height);
+  svg.style.width=br.width+'px';svg.style.height=br.height+'px';
+  g.links.forEach(function(lk){
+    var le=g.leftEls[lk.left], re=g.rightEls[lk.right];
+    if(!le||!re)return;
+    var c1=getCenter(le,svg), c2=getCenter(re,svg);
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',c1.x);line.setAttribute('y1',c1.y);
+    line.setAttribute('x2',c2.x);line.setAttribute('y2',c2.y);
+    line.setAttribute('stroke','#5B8DEF');line.setAttribute('stroke-width','2.5');
+    line.setAttribute('stroke-linecap','round');
+    svg.appendChild(line);
+    [c1,c2].forEach(function(c){
+      var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dot.setAttribute('cx',c.x);dot.setAttribute('cy',c.y);dot.setAttribute('r','3');
+      dot.setAttribute('fill','#5B8DEF');svg.appendChild(dot);
+    });
+  });
+}
+function evaluate(g){
+  if(g.links.length<4){g.emoji.textContent='';g.emoji.className='quiz-emoji';return;}
+  var ok=g.links.every(function(l){return g.correct[l.left]===l.right;});
+  if(ok){g.emoji.textContent='😊';g.emoji.className='quiz-emoji ok';}
+  else{g.emoji.textContent='😣 再试试';g.emoji.className='quiz-emoji wrong';}
+}
+function resetGroup(g){g.links=[];g.pending=null;updateClasses(g);drawLines(g);evaluate(g);}
+
+var gSmall=makeGroup('small','bodySmall','svgSmall','emoSmall',
+  {lin:'mid',eq:'min',qk:'max',par:'min2'});   // 小开度：③最大>①中等>④较小>②最小
+var gLarge=makeGroup('large','bodyLarge','svgLarge','emoLarge',
+  {lin:'min2',eq:'max',qk:'min',par:'mid'});    // 大开度：②最大>④中等>①较小>③最小
+
+document.querySelectorAll('.quiz-reset').forEach(function(b){
+  b.addEventListener('click',function(){var g=this.dataset.group==='small'?gSmall:gLarge;resetGroup(g);});
+});
+
+// ===== 初始化 =====
+resize();
+requestAnimationFrame(loop);
+requestAnimationFrame(function(){drawLines(gSmall);drawLines(gLarge);});
+window.addEventListener('resize',function(){drawLines(gSmall);drawLines(gLarge);});
+
+})();
+</script>
+</body>
+</html>
