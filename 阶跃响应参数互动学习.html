@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>阶跃响应特征参数互动学习</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif; background:#f1f5f9; color:#1f2937; }
+  header { background:#fff; padding:16px 24px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+  header h1 { margin:0; font-size:22px; color:#1e293b; }
+  header p { margin:4px 0 0; color:#64748b; font-size:14px; }
+  .wrap { display:flex; gap:16px; padding:16px; max-width:1340px; margin:0 auto; align-items:flex-start; }
+  .left { flex:1 1 58%; background:#fff; border-radius:12px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+  .right { flex:1 1 42%; display:flex; flex-direction:column; gap:16px; }
+  canvas { width:100%; height:auto; background:#fff; border:1px solid #e2e8f0; border-radius:8px; cursor:default; display:block; }
+  .controls { display:flex; flex-wrap:wrap; gap:18px; margin-top:14px; padding:14px; background:#f8fafc; border-radius:8px; }
+  .ctrl { display:flex; flex-direction:column; gap:6px; font-size:13px; color:#334155; }
+  .ctrl input[type=range]{ width:190px; }
+  .ctrl b { color:#2563eb; font-size:14px; }
+  .params { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:14px; }
+  .params button { padding:10px 4px; border:1px solid #cbd5e1; background:#fff; border-radius:8px; cursor:pointer; font-size:13px; transition:.15s; color:#334155; }
+  .params button:hover { border-color:#2563eb; }
+  .params button.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .card { background:#fff; border-radius:12px; padding:18px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+  .card h2 { margin:0 0 4px; font-size:19px; color:#1d4ed8; }
+  .card .tag { display:inline-block; font-size:12px; color:#fff; background:#3b82f6; padding:2px 8px; border-radius:10px; margin-bottom:8px; }
+  .card .def { font-size:14px; line-height:1.75; color:#374151; }
+  .card .ex { margin-top:12px; padding:10px 12px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; font-size:13px; color:#334155; line-height:1.6; }
+  .card .step { margin-top:10px; font-size:13px; color:#475569; }
+  .quiz { margin-top:12px; }
+  .quiz .qtext { font-size:14px; color:#1e293b; font-weight:bold; margin-bottom:6px; }
+  .quiz button { display:block; width:100%; text-align:left; margin:6px 0; padding:9px 12px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:6px; cursor:pointer; font-size:13px; color:#334155; transition:.15s; }
+  .quiz button:hover { border-color:#2563eb; }
+  .quiz button.correct { background:#dcfce7; border-color:#16a34a; color:#14532d; }
+  .quiz button.wrong { background:#fee2e2; border-color:#dc2626; color:#7f1d1d; }
+  .feedback { margin-top:8px; font-size:13px; font-weight:bold; min-height:18px; }
+  .actions { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; }
+  .actions button { padding:10px 18px; border:none; border-radius:8px; cursor:pointer; font-size:14px; background:#2563eb; color:#fff; }
+  .actions button.alt { background:#f59e0b; }
+  .actions button.ghost { background:#e2e8f0; color:#334155; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:#475569; }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:11px; height:11px; border-radius:50%; display:inline-block; }
+  /* 底部时间游标滑动条（手机版核心交互） */
+  body { padding-bottom:60px; }
+  .scrubber { position:fixed; left:0; right:0; bottom:0; background:#fff; box-shadow:0 -2px 10px rgba(0,0,0,.10); padding:9px 14px; z-index:50; border-top:1px solid #e2e8f0; }
+  .scrub-row { display:flex; align-items:center; gap:12px; max-width:1340px; margin:0 auto; }
+  .scrub-label { font-size:13px; color:#374151; white-space:nowrap; }
+  .scrubber input[type=range]{ flex:1; height:26px; }
+  .scrub-read { font-size:13px; color:#b45309; font-weight:bold; white-space:nowrap; min-width:150px; text-align:right; }
+  /* 手机版响应式 */
+  @media (max-width:760px){
+    .wrap{ flex-direction:column; padding:10px; gap:12px; }
+    .left,.right{ flex:1 1 auto; width:100%; }
+    .params{ grid-template-columns:repeat(2,1fr); }
+    .params button{ font-size:12px; padding:9px 2px; }
+    .controls{ flex-direction:column; gap:12px; }
+    .ctrl input[type=range]{ width:100%; }
+    header{ padding:12px 14px; }
+    header h1{ font-size:18px; }
+    header p{ font-size:12px; }
+    .scrub-label{ display:none; }
+    .scrub-read{ min-width:0; font-size:12px; }
+    .scrubber{ padding:8px 12px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>阶跃响应特征参数 · 互动学习</h1>
+  <p>实例：多效蒸馏水机第一效蒸发器温度控制（设定值从 85℃ 阶跃到 90℃）｜ 点击参数看曲线高亮，附小测验即时判分</p>
+</header>
+
+<div class="wrap">
+  <div class="left">
+    <canvas id="chart" width="820" height="500"></canvas>
+    <div class="legend">
+      <span><i class="dot" style="background:#ef4444"></i>设定值 r</span>
+      <span><i class="dot" style="background:#2563eb"></i>稳态值 y(∞)</span>
+      <span><i class="dot" style="background:#22c55e"></i>±5% 误差带</span>
+      <span><i class="dot" style="background:#dc2626"></i>波峰 / 峰值</span>
+      <span><i class="dot" style="background:#7c3aed"></i>时间类参数</span>
+      <span><i class="dot" style="background:#0891b2"></i>调节时间</span>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl">
+        <label for="zeta">阻尼比 ζ = <b id="zetaVal">0.22</b></label>
+        <input id="zeta" type="range" min="0.05" max="1.50" step="0.01" value="0.22">
+      </div>
+      <div class="ctrl">
+        <label for="wn">自然频率 ωₙ = <b id="wnVal">1.0</b></label>
+        <input id="wn" type="range" min="0.3" max="3.0" step="0.1" value="1.0">
+      </div>
+      <div class="ctrl">
+        <label for="ess">余差 e_ss = <b id="essVal">0.00</b>（占设定值比例）</label>
+        <input id="ess" type="range" min="0" max="0.15" step="0.01" value="0">
+      </div>
+      <div class="ctrl">
+        <label for="band">误差带 = <b id="bandVal">±5%</b></label>
+        <select id="band">
+          <option value="0.05" selected>±5%</option>
+          <option value="0.02">±2%</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="params" id="paramBtns"></div>
+
+    <div class="actions">
+      <button id="resetBtn" class="ghost">重置曲线</button>
+      <button id="clearBtn" class="ghost">清除高亮</button>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="card" id="infoCard">
+      <span class="tag">使用说明</span>
+      <h2>欢迎来到互动课堂</h2>
+      <div class="def">左侧是一阶/二阶系统的单位阶跃响应曲线。请点击上方 8 个参数按钮，曲线上会高亮对应位置，右侧显示它的<b>定义、多效蒸馏水机实例、五步互动法</b>，并附一道小测验。</div>
+      <div class="ex"><b>情境：</b>多效蒸馏水机第一效蒸发器温度从 85℃ 阶跃到 90℃。这条曲线的“快、稳、准”到底如何评价？——这正是 8 个特征参数要回答的问题。</div>
+    </div>
+    <div class="card" id="quizCard" style="display:none;">
+      <h2 id="quizTitle">小测验</h2>
+      <div class="quiz" id="quizArea"></div>
+      <div class="feedback" id="quizFeedback"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 底部时间游标滑动条（手机版核心交互：左右拖动扫描曲线） -->
+<div class="scrubber" id="scrubber">
+  <div class="scrub-row">
+    <span class="scrub-label">时间游标 t</span>
+    <input id="scrub" type="range" min="0" max="20" step="0.05" value="0">
+    <span class="scrub-read" id="scrubRead">t=0.0s · 0.0℃</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const pad = {l:60, r:46, t:30, b:55};
+const x0 = pad.l, y0 = H - pad.b;
+const xw = W - pad.l - pad.r, yh = H - pad.t - pad.b;
+const TMAX = 20, YMAX = 1.7;
+const tx = x => x0 + (x/TMAX)*xw;
+const ty = y => y0 - (y/YMAX)*yh;
+
+let zeta = 0.22, wn = 1.0, ess = 0.0;
+let bandPct = 0.05; // 调节时间误差带（±5% 或 ±2%），基于新稳态值 ys
+let selected = null;
+let answered = false;
+let scrubT = 0; // 底部滑动条控制的时间游标（null 表示不显示）
+
+// 二阶系统单位阶跃响应（稳态=1）
+function step(t, z, wn){
+  if (z >= 1){
+    if (z === 1) return 1 - Math.exp(-wn*t)*(1+wn*t);
+    const r = Math.sqrt(z*z-1);
+    const s1 = -z*wn + wn*r, s2 = -z*wn - wn*r;
+    return 1 - (s2*Math.exp(s1*t) - s1*Math.exp(s2*t))/(s2-s1);
+  }
+  const wd = wn*Math.sqrt(1-z*z), sg = z*wn;
+  return 1 - Math.exp(-sg*t)*(Math.cos(wd*t) + (sg/wd)*Math.sin(wd*t));
+}
+
+// 计算指标
+function metrics(){
+  const dt = 0.01; const t=[], ystd=[];
+  for(let i=0;i<=TMAX/dt;i++){ t.push(i*dt); ystd.push(step(i*dt, zeta, wn)); }
+  const ys = 1 - ess; // 稳态值（有余差时偏低）
+  const y = ystd.map(v => v*ys);
+  const peaks = [];
+  for(let i=1;i<y.length-1;i++) if(y[i]>y[i-1]&&y[i]>y[i+1]&&y[i]>ys+1e-4) peaks.push(i);
+  const tp = peaks.length? t[peaks[0]] : null;
+  const ymax = peaks.length? y[peaks[0]] : ys*1.001;
+  const overshoot = (ymax - ys)/ys*100;
+  const tp2 = peaks.length>1? t[peaks[1]] : null;
+  const ymax2 = peaks.length>1? y[peaks[1]] : ys;
+  const decay = (ymax-ys)>1e-5 && (ymax2-ys)>1e-5 ? (ymax-ys)/(ymax2-ys) : Infinity;
+  const T = tp&&tp2? tp2-tp : null;
+  const ir = y.findIndex(v=>v>=ys*0.99); // 第一次达到稳态值（约 99%）
+  const tr = ir>=0? t[ir] : null;
+  // 调节时间：进入并保持在新稳态值 ys 附近 ±bandPct 误差带内的最短时间
+  const band = bandPct*ys;
+  let ts = 0;
+  for(let i=y.length-1;i>=0;i--){ if(Math.abs(y[i]-ys)>band){ ts = t[i+1]||t[i]; break; } }
+  return {t,y,ys,tp,ymax,overshoot,ymax2:ymax2,tp2,decay,T,tr,ts,ess,bandPct};
+}
+
+// 参数信息
+const info = {
+  ess: { name:'余差 e_ss', tag:'准',
+    def:'稳态输出与设定值之差：e_ss = y(∞) − r。e_ss = 0 称“无差系统”，否则为“有差系统”。',
+    ex:'第一效温度设定 90℃，若稳定后只有 89℃，余差 = 1℃。长期偏离工艺卡，每批水都偏低，需引入积分作用消除静差。',
+    step:'五步法：①看曲线最终停在 89℃ 还是 90℃ → ②猜“差多少” → ③量两条水平线间距 → ④记定义 e_ss = y(∞)−r → ⑤评：越小越好。',
+    q:'下列哪种情况一定存在余差？', opts:['A. 衰减比 4:1','B. 稳态值与设定值不相等','C. 有超调量','D. 上升时间短'], ans:1,
+    fb:'余差的定义就是稳态值与设定值之差，二者不等即有差。' },
+  overshoot: { name:'超调量 σ%', tag:'稳',
+    def:'第一个峰值超出稳态值的百分比：σ% = (y_max − y∞)/y∞ × 100%。',
+    ex:'温度冲到 95℃，σ% = (95−90)/90 × 100% ≈ 5.6%。超调大可能触发高温报警、局部汽化，能耗也高。',
+    step:'五步法：①找最高点 → ②猜“冲高了多少” → ③量峰值到稳态线的高度 → ④记公式 → ⑤评：通常希望小，但快速升温场景可接受一定超调。',
+    q:'温度设定 90℃，峰值 94.5℃，稳态 90℃，超调量约为？', opts:['A. 5%','B. 4.5%','C. 10%','D. 94.5%'], ans:0,
+    fb:'σ% = (94.5−90)/90×100% = 5%。' },
+  maxdev: { name:'最大动态偏差 A', tag:'稳',
+    def:'过渡过程中被控量偏离设定值的最大绝对值：A = y_max − r（有超调时）。',
+    ex:'A = 95℃ − 90℃ = 5℃，是操作员最关心的“绝对安全余量”，比百分比更直观。',
+    step:'五步法：①找最高点 → ②猜“离设定值多远” → ③量峰值到设定值线的高度 → ④记 A = y_max − r → ⑤评：A 与 σ% 本质相同，只是单位不同。',
+    q:'下列哪项说法正确？', opts:['A. A 是无量纲百分比','B. A 是绝对温度差，单位℃','C. A 只在稳态出现','D. A 等于余差'], ans:1,
+    fb:'最大动态偏差 A 是绝对偏差（如 5℃），超调量 σ% 才是百分比。' },
+  tp: { name:'峰值时间 t_p', tag:'快',
+    def:'响应从阶跃开始到达第一个峰值所需的时间。',
+    ex:'温度从阶跃到第一次冲到 95℃ 用了多少秒？反映系统响应的“敏捷程度”。',
+    step:'五步法：①在曲线上找第一个峰 → ②猜时间 → ③读横轴 → ④记定义 → ⑤评：t_p 越小越灵敏。',
+    q:'t_p 衡量的是系统的哪方面性能？', opts:['A. 稳定性','B. 准确性','C. 快速性（响应敏捷度）','D. 耗能'], ans:2,
+    fb:'峰值时间属于“快”的时间类指标，反映快速性。' },
+  tr: { name:'上升时间 t_r', tag:'快',
+    def:'过渡过程开始（阶跃施加）到被控变量第一次达到稳态值 y(∞) 的时间。',
+    ex:'温度从 85℃ 阶跃到 90℃，即被控量第一次到达稳态值 90℃ 所用的时间。',
+    step:'五步法：①找阶跃起点 t=0 → ②猜“多久首次碰到稳态线” → ③读横轴 t_r → ④记定义（起点到首次达稳态值）→ ⑤评：t_r 越小响应越快。',
+    q:'按“第一次达到稳态值”的定义，上升时间 t_r 从何时算到何时？', opts:['A. 10%→90% 稳态值','B. 阶跃开始到第一次达到稳态值','C. 峰值到稳态','D. 0→峰值'], ans:1,
+    fb:'上升时间 = 过渡过程开始到被控量第一次达到稳态值的时间。' },
+  decay: { name:'衰减比 n', tag:'稳',
+    def:'相邻两个同向波峰幅值之比：n = B / B′。工程经验目标 4:1 ～ 10:1。',
+    ex:'若第二波峰仍很高，说明温度反复冲击上下限，设备和药品都受不了；n 太小振荡剧烈，太大则响应迟钝。',
+    step:'五步法：①找第一、二波峰 → ②猜“第二次还冲多高” → ③量两峰高度 B、B′ → ④记 n = B/B′ → ⑤评：4:1 是常用折中。',
+    q:'衰减比 4:1 表示？', opts:['A. 超调 4%','B. 第二个波峰高度是第一个的 1/4','C. 余差 4%','D. 调节时间 4s'], ans:1,
+    fb:'n = B/B′ = 4，即第二波峰是第一波峰的 1/4。' },
+  ts: { name:'调节时间 t_s', tag:'快',
+    def:'从过渡过程开始到结束所需的时间。当被控变量进入新稳态值附近 ±5% 或 ±2% 误差带、并保持在带内时，过渡过程结束，此时的时间即调节时间（可用下方“误差带”切换 ±2%/±5% 实时查看）。',
+    ex:'工艺要求 3 min 内稳定，若 t_s = 8 min，说明控制参数需整定。',
+    step:'五步法：①画 ±5% 误差带 → ②找曲线“进去后不再出来”的点 → ③读横轴 → ④记定义（必须带误差带！）→ ⑤评：误差带越小 t_s 越长。',
+    q:'下列说法哪项正确？', opts:['A. 调节时间越小越好，与误差带无关','B. 说调节时间必须同时说明误差带','C. 调节时间等于峰值时间','D. 调节时间只取决于超调量'], ans:1,
+    fb:'调节时间高度依赖误差带，说 t_s 必须交代是 ±2% 还是 ±5%。' },
+  omega: { name:'振荡频率 ω / 周期 T', tag:'稳',
+    def:'振荡角频率 ω_d = ωₙ√(1−ζ²)，周期 T = 2π/ω_d（相邻同向波峰的时间差）。',
+    ex:'峰峰之间的时间越短，振荡越频繁，系统越“暴躁”；T 直接反映波动节奏。',
+    step:'五步法：①量相邻两波峰横轴间距 → ②猜周期 → ③记 T、ω_d → ④联系 ζ、ωₙ → ⑤评：ω_d 大则响应快但易振荡。',
+    q:'增大自然频率 ωₙ，振荡周期 T 会怎样？', opts:['A. 变长','B. 变短','C. 不变','D. 变为零'], ans:1,
+    fb:'T = 2π/(ωₙ√(1−ζ²))，ωₙ 增大则 T 变短、振荡更快。' }
+};
+
+const order = ['ess','overshoot','maxdev','tp','tr','decay','ts','omega'];
+
+// 构建按钮
+const btnBox = document.getElementById('paramBtns');
+order.forEach(k=>{
+  const b = document.createElement('button');
+  b.textContent = info[k].name;
+  b.dataset.key = k;
+  b.onclick = ()=> selectParam(k);
+  btnBox.appendChild(b);
+});
+
+function selectParam(k){
+  selected = k;
+  document.querySelectorAll('#paramBtns button').forEach(b=>b.classList.toggle('active', b.dataset.key===k));
+  const d = info[k];
+  document.getElementById('infoCard').innerHTML =
+    `<span class="tag">${d.tag==='快'?'快（时间类）':d.tag==='稳'?'稳（波动类）':'准（精度类）'}</span>`+
+    `<h2>${d.name}</h2>`+
+    `<div class="def">${d.def}</div>`+
+    `<div class="ex"><b>实例：</b>${d.ex}</div>`+
+    `<div class="step"><b>课堂五步互动法：</b><br>${d.step}</div>`;
+  // 测验
+  const qc = document.getElementById('quizCard');
+  qc.style.display = 'block';
+  document.getElementById('quizTitle').textContent = d.name + ' · 小测验';
+  const qa = document.getElementById('quizArea');
+  qa.innerHTML = '';
+  document.getElementById('quizFeedback').textContent = '';
+  const q = document.createElement('div'); q.className='qtext'; q.textContent = d.q; qa.appendChild(q);
+  d.opts.forEach((opt,i)=>{
+    const ob = document.createElement('button');
+    ob.textContent = opt;
+    ob.onclick = ()=>{
+      if(answered) return; answered = true;
+      if(i===d.ans){ ob.classList.add('correct'); document.getElementById('quizFeedback').style.color='#16a34a'; document.getElementById('quizFeedback').textContent='✓ 正确！'+d.fb; }
+      else { ob.classList.add('wrong'); document.getElementById('quizFeedback').style.color='#dc2626'; document.getElementById('quizFeedback').textContent='✗ 再想想：'+d.fb;
+        qa.children[d.ans+1].classList.add('correct'); }
+    };
+    qa.appendChild(ob);
+  });
+  answered = false;
+  draw();
+}
+
+// 绘图
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  const m = metrics();
+
+  // 网格
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let x=0;x<=20;x+=2){ ctx.beginPath(); ctx.moveTo(tx(x),ty(0)); ctx.lineTo(tx(x),ty(YMAX)); ctx.stroke(); }
+  for(let yv=0.2;yv<=1.6;yv+=0.2){ ctx.beginPath(); ctx.moveTo(tx(0),ty(yv)); ctx.lineTo(tx(20),ty(yv)); ctx.stroke(); }
+
+  // 轴
+  ctx.strokeStyle='#374151'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(0)); ctx.lineTo(tx(20),ty(0)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(0)); ctx.lineTo(tx(0),ty(YMAX)); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='13px sans-serif';
+  ctx.fillText('温度 / ℃', tx(0)-6, ty(YMAX)-6);
+  // 横坐标时间刻度
+  ctx.fillStyle='#64748b'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let x=0;x<=20;x+=2){ ctx.fillText(String(x), tx(x), ty(0)+5); }
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillText('t / s', tx(20)+8, ty(0)+2);
+
+  // 纵轴温度刻度（设定值 1.0 = 90℃）
+  ctx.fillStyle='#64748b'; ctx.font='11px sans-serif';
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  [0,0.5,1.0,1.5].forEach(yv=>{
+    const yy = ty(yv);
+    ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x0,yy); ctx.lineTo(x0-5,yy); ctx.stroke();
+    ctx.fillText((yv*90)+'℃', x0-8, yy);
+  });
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+
+  // 误差带（基于新稳态值 ys，±bandPct）
+  const ub = m.ys*(1+bandPct), lb = m.ys*(1-bandPct);
+  ctx.fillStyle='rgba(34,197,94,0.12)';
+  ctx.fillRect(tx(0), ty(ub), xw, ty(lb)-ty(ub));
+  ctx.strokeStyle='#22c55e'; ctx.setLineDash([5,3]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(ub)); ctx.lineTo(tx(20),ty(ub)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(lb)); ctx.lineTo(tx(20),ty(lb)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#16a34a'; ctx.font='11px sans-serif';
+  ctx.fillText('+'+(bandPct*100)+'%', tx(19.3), ty(ub)-4);
+  ctx.fillText('−'+(bandPct*100)+'%', tx(19.3), ty(lb)+14);
+
+  // 设定值线
+  ctx.strokeStyle='#ef4444'; ctx.setLineDash([7,4]); ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(1)); ctx.lineTo(tx(20),ty(1)); ctx.stroke();
+  ctx.fillStyle='#ef4444'; ctx.font='12px sans-serif';
+  ctx.fillText('设定值 r=90℃', tx(0.5), ty(1)-6); ctx.setLineDash([]);
+
+  // 稳态线
+  ctx.strokeStyle='#2563eb'; ctx.setLineDash([7,4]); ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(tx(0),ty(m.ys)); ctx.lineTo(tx(20),ty(m.ys)); ctx.stroke();
+  ctx.fillStyle='#2563eb'; ctx.font='12px sans-serif';
+  ctx.fillText('稳态 y(∞)='+(m.ys*90).toFixed(1)+'℃'+(ess>0?'（有余差）':''), tx(0.5), ty(m.ys)+16); ctx.setLineDash([]);
+
+  // 曲线
+  ctx.strokeStyle='#2563eb'; ctx.lineWidth=2.6; ctx.beginPath();
+  for(let i=0;i<m.t.length;i++){ const px=tx(m.t[i]), py=ty(m.y[i]); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+  ctx.stroke();
+
+  // 高亮
+  if(selected) drawHighlight(selected, m);
+
+  // 时间游标（底部滑动条控制）：在曲线上画竖线 + 圆点 + 实时读数
+  if(scrubT!==null){
+    const yv = step(scrubT, zeta, wn)*(1-ess);
+    const px = tx(scrubT), py = ty(yv);
+    ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px, ty(0)); ctx.lineTo(px, ty(YMAX)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#f59e0b'; ctx.beginPath(); ctx.arc(px,py,5,0,Math.PI*2); ctx.fill();
+    ctx.font='bold 12px sans-serif';
+    const txt='t='+scrubT.toFixed(1)+'s  y='+(yv*90).toFixed(1)+'℃';
+    const tw=ctx.measureText(txt).width;
+    let bx=px+8; if(bx+tw+10>tx(20)) bx=px-tw-18;
+    ctx.fillStyle='rgba(245,158,11,.95)'; ctx.fillRect(bx, py-24, tw+10, 18);
+    ctx.fillStyle='#fff'; ctx.fillText(txt, bx+5, py-11);
+  }
+}
+
+function drawHighlight(k, m){
+  if(k==='ess'){
+    if(ess>0.001){
+      const yTop=ty(1), yBot=ty(m.ys);
+      ctx.strokeStyle='#065f46'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(tx(17),yTop); ctx.lineTo(tx(17),yBot); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx(16.8),yTop+10); ctx.lineTo(tx(17.2),yTop); ctx.lineTo(tx(16.8),yTop-0); ctx.fillStyle='#065f46'; ctx.fill();
+      ctx.fillStyle='#065f46'; ctx.font='bold 13px sans-serif';
+      ctx.fillText('e_ss='+(ess*90).toFixed(1)+'℃', tx(17)+6, (yTop+yBot)/2);
+    } else {
+      ctx.fillStyle='#065f46'; ctx.font='bold 13px sans-serif';
+      ctx.fillText('本例 e_ss = 0（无差）', tx(15), ty(1)-14);
+    }
+  }
+  if(k==='overshoot'||k==='maxdev'){
+    if(m.tp){
+      ctx.fillStyle='#dc2626'; ctx.beginPath(); ctx.arc(tx(m.tp),ty(m.ymax),6,0,Math.PI*2); ctx.fill();
+      // 超调量垂直线：与第一个波峰对齐
+      ctx.strokeStyle='#f97316'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(tx(m.tp),ty(m.ys)); ctx.lineTo(tx(m.tp),ty(m.ymax)); ctx.stroke();
+      ctx.fillStyle='#f97316'; ctx.font='bold 12px sans-serif';
+      ctx.fillText('σ%='+m.overshoot.toFixed(1)+'%', tx(m.tp)+8, (ty(m.ys)+ty(m.ymax))/2-4);
+      const Amax = (m.ymax-1)*90;
+      ctx.fillText('A='+Amax.toFixed(1)+'℃', tx(m.tp)+8, (ty(m.ys)+ty(m.ymax))/2+12);
+    }
+  }
+  if(k==='tp'){
+    if(m.tp){
+      ctx.fillStyle='#dc2626'; ctx.beginPath(); ctx.arc(tx(m.tp),ty(m.ymax),6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#7c3aed'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(tx(m.tp),ty(m.ymax)); ctx.lineTo(tx(m.tp),ty(0)); ctx.stroke();
+      ctx.fillStyle='#7c3aed'; ctx.font='bold 13px sans-serif';
+      ctx.fillText('t_p='+m.tp.toFixed(2)+'s', tx(m.tp)+8, ty(m.ymax)-10);
+    }
+  }
+  if(k==='tr'){
+    if(m.tr){
+      const ix = tx(m.tr);
+      // 竖线：在 t_r 处从横轴到稳态线（首次达到稳态值）
+      ctx.strokeStyle='#7c3aed'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(ix, ty(0)); ctx.lineTo(ix, ty(m.ys)); ctx.stroke();
+      ctx.setLineDash([]);
+      // 底部时间区间：从 t=0（阶跃开始）到首次达到稳态值
+      ctx.beginPath(); ctx.moveTo(tx(0), ty(0)-9); ctx.lineTo(ix, ty(0)-9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx(0), ty(0)-13); ctx.lineTo(tx(0), ty(0)-5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ix, ty(0)-13); ctx.lineTo(ix, ty(0)-5); ctx.stroke();
+      ctx.fillStyle='#7c3aed'; ctx.font='bold 13px sans-serif';
+      ctx.fillText('t_r='+m.tr.toFixed(2)+'s', (tx(0)+ix)/2-20, ty(0)-14);
+    }
+  }
+  if(k==='decay'){
+    if(m.tp&&m.tp2){
+      // 第一波峰 B（含高度参考线）
+      ctx.fillStyle='#dc2626'; ctx.beginPath(); ctx.arc(tx(m.tp),ty(m.ymax),6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#be123c'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(tx(m.tp),ty(m.ys)); ctx.lineTo(tx(m.tp),ty(m.ymax)); ctx.stroke();
+      // 第二波峰 B′（含高度参考线）—— 衰减比中被强调的位置
+      ctx.fillStyle='#dc2626'; ctx.beginPath(); ctx.arc(tx(m.tp2),ty(m.ymax2),5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(tx(m.tp2),ty(m.ys)); ctx.lineTo(tx(m.tp2),ty(m.ymax2)); ctx.stroke();
+      ctx.fillStyle='#be123c'; ctx.font='bold 14px sans-serif';
+      ctx.fillText('B', tx(m.tp)-4, ty(m.ymax)+18);
+      ctx.fillText('B′', tx(m.tp2)+8, ty(m.ymax2)+16);
+      ctx.fillText('n=B/B′≈'+(isFinite(m.decay)?m.decay.toFixed(1):'∞'), (tx(m.tp)+tx(m.tp2))/2-30, ty(1.3));
+    }
+  }
+  if(k==='ts'){
+    const ub2 = m.ys*(1+bandPct), lb2 = m.ys*(1-bandPct);
+    ctx.strokeStyle='#0891b2'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(tx(m.ts),ty(lb2)); ctx.lineTo(tx(m.ts),ty(ub2)); ctx.stroke();
+    ctx.fillStyle='#0891b2'; ctx.font='bold 13px sans-serif';
+    ctx.fillText('t_s(±'+(bandPct*100)+'%)='+m.ts.toFixed(1)+'s', tx(m.ts)+6, ty(ub2)-8);
+  }
+  if(k==='omega'){
+    if(m.tp&&m.tp2&&m.T){
+      ctx.strokeStyle='#7c3aed'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(tx(m.tp),ty(1.25)); ctx.lineTo(tx(m.tp2),ty(1.25)); ctx.stroke();
+      ctx.fillStyle='#7c3aed'; ctx.font='bold 13px sans-serif';
+      ctx.fillText('T='+m.T.toFixed(1)+'s', (tx(m.tp)+tx(m.tp2))/2-18, ty(1.25)-8);
+      ctx.fillText('ω_d=2π/T', (tx(m.tp)+tx(m.tp2))/2-22, ty(1.25)+16);
+    }
+  }
+}
+
+// 滑块
+document.getElementById('zeta').oninput = e=>{ zeta=parseFloat(e.target.value); document.getElementById('zetaVal').textContent=zeta.toFixed(2); draw(); };
+document.getElementById('wn').oninput = e=>{ wn=parseFloat(e.target.value); document.getElementById('wnVal').textContent=wn.toFixed(1); draw(); };
+document.getElementById('ess').oninput = e=>{ ess=parseFloat(e.target.value); document.getElementById('essVal').textContent=ess.toFixed(2); draw(); };
+document.getElementById('band').onchange = e=>{ bandPct=parseFloat(e.target.value); document.getElementById('bandVal').textContent='±'+(bandPct*100)+'%'; draw(); };
+// 底部时间游标滑动条
+const scrubEl = document.getElementById('scrub');
+const scrubRead = document.getElementById('scrubRead');
+scrubEl.oninput = ()=>{ scrubT=parseFloat(scrubEl.value); const yv=step(scrubT, zeta, wn)*(1-ess); scrubRead.textContent='t='+scrubT.toFixed(1)+'s · '+(yv*90).toFixed(1)+'℃'; draw(); };
+document.getElementById('resetBtn').onclick = ()=>{ zeta=0.22; wn=1.0; ess=0.0; document.getElementById('zeta').value=0.22; document.getElementById('wn').value=1.0; document.getElementById('ess').value=0; document.getElementById('zetaVal').textContent='0.22'; document.getElementById('wnVal').textContent='1.0'; document.getElementById('essVal').textContent='0.00'; scrubT=0; scrubEl.value=0; scrubRead.textContent='t=0.0s · 0.0℃'; selected=null; document.querySelectorAll('#paramBtns button').forEach(b=>b.classList.remove('active')); draw(); };
+document.getElementById('clearBtn').onclick = ()=>{ selected=null; document.querySelectorAll('#paramBtns button').forEach(b=>b.classList.remove('active')); draw(); };
+
+draw();
+</script>
+</body>
+</html>
